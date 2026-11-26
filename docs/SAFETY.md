@@ -3,7 +3,7 @@
 This is reverse-engineering research on a heating controller, **not an approved controller replacement or commercial service tool**.
 
 - Use a bench controller where possible. A heating installation may control circulation, valves, DHW temperatures and safety alarms.
-- All shipped tools must remain **read-only** until a write protocol and its validation have been independently established.
+- Shipped tools remain **read-only**. ID 2 clock writing is verified on the bench; configuration writes and restore safety are not yet established.
 - Do not auto-acknowledge or suppress alarms.
 - Treat invalid sensor readings as unavailable, not real temperatures: `0x865A` was observed for a disconnected temperature channel.
 - Treat all unknown registers as opaque; never write or clone them into another controller.
