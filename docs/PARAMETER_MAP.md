@@ -33,11 +33,11 @@ All other ID 12 bytes are undecoded. Offset 9 has been restored to 30°C.
 | 9–10 | u16 BE seconds | L1 3-state actuator travel time | confirmed 150→160 |
 | 11–12 | u16 BE | L2 first value 215 | unknown |
 | 13–14 | u16 BE °C | L2 P band | confirmed 140→160 |
-| 15–16 | u16 BE seconds | L2 I time (50 observed) | candidate |
-| 17–18 | u16 BE /10 seconds | L2 D time (0 observed) | candidate |
-| 19–20 | u16 BE seconds | L2 actuator time (150 observed) | candidate |
+| 15–16 | u16 BE seconds | L2 I time | confirmed 50→60, restored to 50 |
+| 17–18 | u16 BE /10 seconds | L2 D time | confirmed 0→15 for 1.5s, restored to 0 |
+| 19–20 | u16 BE seconds | L2 actuator time | confirmed 150→160 |
 
-The L1 and L2 groups look symmetric but **only L2 P** has been experimentally changed.
+Both groups have experimentally confirmed P/I/D and actuator travel time. The two values 215 remain unknown.
 
 ## ID 14 — L2 configuration (31 data bytes)
 
@@ -49,7 +49,7 @@ The L1 and L2 groups look symmetric but **only L2 P** has been experimentally ch
 - Offset **5**, uint8 °C: L2 night reduction, **confirmed** 0→3, restored to 0.
 - Offset **9**, uint8 °C: L2 autumn drying, **confirmed** 2→3, restored to 2.
 - Offset **23**, int8 °C: L2 parallel curve shift, **confirmed** 0→-2 (`00→FE`), restored to 0.
-- Offset **15**, uint8 hours: L2 outdoor-temperature delay, **confirmed** 0→3; restore to 0.
+- Offset **15**, uint8 hours: L2 outdoor-temperature delay, **confirmed** 0→3, restored to 0.
 - Other values are not verified; do not copy L1 positional assumptions to L2.
 
 ## ID 15 — calculated settings, not fully decoded
