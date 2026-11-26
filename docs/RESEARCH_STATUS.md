@@ -15,6 +15,7 @@
 - All 64 responses in successive 0–63 scans were structurally valid, including rejected responses.
 - ID 0 and ID 48 rejected on the test unit.
 - IDs 64–127 also scanned; only IDs 64,65,66,95–101 accepted in that range.
+- IDs 128–255: all 128 requests and responses independently validated; all rejected with `02 01 02 00 FF 02`. Median response 26.535 ms (26.20–91.83 ms). Full 8-bit ID space scanned with the established read command: 72 accepted, 184 rejected. Other command types are not ruled out.
 - Negative temperatures use signed BE 16-bit hundredths; raw `0x865A` observed when a temperature sensor was disconnected. Treat as a specific observed fault sentinel, not a universal rule.
 
 ## Controlled confirmations
@@ -42,7 +43,7 @@ See [PARAMETER_MAP.md](PARAMETER_MAP.md) for precise positions, types and units.
 - Query fourth byte 00→01 for a few IDs yielded identical responses; no proof of high address extension.
 
 ## Next controlled experiment
-Latest capture: `ouman_l1_curve_restored.json`. All 128 response frames independently validated; 72 accepted, 56 rejected. Compared with `ouman_l1_curve_x4_11.json`, ID 65 offset 8 changed 11→10 and only timestamps in IDs 2,3,36,38 otherwise changed. Both curve blocks are restored to their original coordinate values. Curve mapping complete (18/18 editable fields). Next experiment to be selected with the operator; no serial write commands have been established.
+Latest capture: `ouman_l1_curve_restored.json`. All 128 response frames independently validated; 72 accepted, 56 rejected. Compared with `ouman_l1_curve_x4_11.json`, ID 65 offset 8 changed 11→10 and only timestamps in IDs 2,3,36,38 otherwise changed. Both curve blocks are restored to their original coordinate values. Curve mapping complete (18/18 editable fields). Subsequent full upper-range sweep `ouman_scan_128_255.json` found no additional accepted IDs. Next experiment to be selected with the operator; no serial write commands have been established.
 
 ## Research continuity rule
 Every new session should record: previous capture, exact LCD change(s), next capture, frame validity, per-ID data-byte diff, which changes were independently confirmed, and next single test. Keep raw captures immutable.
