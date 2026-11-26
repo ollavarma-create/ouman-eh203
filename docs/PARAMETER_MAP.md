@@ -43,7 +43,9 @@ The L1 and L2 groups look symmetric but **only L2 P** has been experimentally ch
 
 - Data offset **22**, uint8 °C: L2 deviation alarm, **confirmed** 25→26.
 - Offset **7**, uint8 °C: L2mv.min(0), **confirmed** 10→11, restored to 10.
-- Offset **8**, uint8 °C: L2mv.min(-20), **confirmed** 30→31; restore to 30 at next experiment.
+- Offset **8**, uint8 °C: L2mv.min(-20), **confirmed** 30→31, restored to 30.
+- Offset **3**, uint8 °C: L2 supply minimum, **confirmed** 15→16, restored to 15.
+- Offset **4**, uint8 °C: L2 supply maximum, **confirmed** 70→71; restore to 70 at next experiment.
 - Other values are not verified; do not copy L1 positional assumptions to L2.
 
 ## ID 15 — calculated settings, not fully decoded
