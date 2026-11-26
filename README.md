@@ -2,7 +2,7 @@
 
 An experimental, **unofficial** reverse-engineering project for the Ouman EH-203 heating controller (tested on firmware **2.15**). The goal is to preserve reproducible evidence, build read-only diagnostics, and eventually support ESPHome/Home Assistant. A possible settings backup/restore tool is a **future research objective**, not an implemented feature.
 
-**Project status (2026-11-26):** Native RS-232 **4800 8N1** read requests and checksums are known; many temperature measurements and configuration fields are mapped by controlled LCD-setting experiments. **A single clock write (ID 2, command 0x82) has been verified on the bench with readback.** Configuration writes remain experimental.
+**Project status (2026-11-26):** Native RS-232 **4800 8N1** read requests and checksums are known; many temperature measurements and configuration fields are mapped by controlled LCD-setting experiments. **A single clock write (ID 2, command 0x82) has been verified on the bench with readback.** ID 13 L1 room setpoint write, full-block readback, LCD confirmation and operator-confirmed power-cycle persistence are also established. Other configuration writes remain experimental.
 
 Start with:
 - [Research status and next experiment](docs/RESEARCH_STATUS.md)
