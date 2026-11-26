@@ -56,4 +56,9 @@ Other source reference files: `EH-203.xml` and `EH-203.dev` describe **Modbus** 
 - `ouman_l2_autumn3.json`: L2 autumn drying 2→3°C.
 
 - `ouman_l2_shift_minus2.json`: L2 parallel shift 0→−2°C.
-- `ouman_l2_outdoor_delay3.json`: L2 outdoor delay 0→3h; latest capture.
+- `ouman_l2_outdoor_delay3.json`: L2 outdoor delay 0→3h.
+
+## L2 tuning continuation
+- `ouman_l2_i60.json`: L2 I 50→60s.
+- `ouman_l2_d15.json`: L2 D 0→1.5s.
+- `ouman_l2_motor160.json`: L2 actuator travel 150→160s; latest capture.
