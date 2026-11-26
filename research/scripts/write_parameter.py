@@ -12,6 +12,7 @@ from pathlib import Path
 PARAMETERS = {
     "l1_room_gain": (12, 7, 1, 49, 50),
     "l1_room_setpoint": (13, 1, 2, 250, 251),
+    "l1_curve_y3": (65, 3, 1, 25, 26),
 }
 
 def frame(cmd, pid, data=b""):
@@ -25,9 +26,9 @@ def decode(rx, pid, size):
         raise ValueError("Invalid response, echo, length or checksum")
     return rx[5:-1]
 
-def raw_value(value, low, high):
+def raw_value(value, low, high, scale=10):
     try:
-        n = Decimal(value)*10
+        n = Decimal(value)*scale
         if not n.is_finite() or n != n.to_integral_value() or not low <= n <= high:
             raise ValueError("Outside tested range or precision")
         return int(n)
@@ -59,8 +60,9 @@ def save(path, record):
 
 def run(ser, args, path, record, confirm):
     pid, offset, width, low, high = PARAMETERS[args.parameter]
-    expected = raw_value(args.expect,low,high)
-    target = raw_value(args.value,low,high)
+    scale = 1 if pid == 65 else 10
+    expected = raw_value(args.expect,low,high,scale)
+    target = raw_value(args.value,low,high,scale)
     def exchange(tx):
         entry = {"tx":tx.hex(" ")}
         record["frames"].append(entry)
@@ -86,6 +88,13 @@ def run(ser, args, path, record, confirm):
         raise ValueError("Only EH-203 firmware 2.15 supported")
     record["serial_number"] = int.from_bytes(ident[:4],"little")
     original = decode(exchange(frame(0x81,pid)),pid,31)
+    if pid == 65:
+        if original[0] != 0 or not original[2] >= target >= original[4]:
+            raise ValueError('Require five-point mode and monotonic neighboring Y values')
+        mirror = decode(exchange(frame(0x81,12)),12,31)
+        if mirror[1] != expected:
+            raise ValueError('Unexpected ID 12 mirror before write')
+        record['mirror_before'] = mirror.hex(' ')
     modified = patch(original,offset,width,expected,target)
     record.update(original=original.hex(" "), proposed=modified.hex(" "))
     save(path,record)
@@ -100,6 +109,8 @@ def run(ser, args, path, record, confirm):
         return "cancelled"
     if decode(exchange(frame(0x81,pid)),pid,31)!=original:
         raise ValueError("Block changed since preview; no write sent")
+    if pid == 65 and decode(exchange(frame(0x81,12)),12,31) != mirror:
+        raise ValueError("Mirror changed since preview; no write sent")
     record["status"]="write_outcome_unknown"
     save(path,record)
     ack = exchange(frame(0x82,pid,modified))
@@ -115,6 +126,12 @@ def run(ser, args, path, record, confirm):
     save(path,record)
     if actual!=modified or not ack_ok:
         raise ValueError("Write not fully verified; inspect manually, no retry")
+    if pid == 65:
+        after = decode(exchange(frame(0x81,12)),12,31)
+        record["mirror_after"] = after.hex(" ")
+        record["mirror_matches"] = after == mirror[:1]+bytes((target,))+mirror[2:]
+        if not record["mirror_matches"]:
+            raise ValueError("Curve written but mirror differs from expected; inspect manually")
     return "verified"
 
 def main():
@@ -128,8 +145,9 @@ def main():
     args=p.parse_args()
     _,_,_,low,high=PARAMETERS[args.parameter]
     try:
-        raw_value(args.expect,low,high)
-        raw_value(args.value,low,high)
+        scale = 1 if args.parameter == 'l1_curve_y3' else 10
+        raw_value(args.expect,low,high,scale)
+        raw_value(args.value,low,high,scale)
     except ValueError as exc:
         p.error(str(exc))
     import serial
