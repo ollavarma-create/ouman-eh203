@@ -43,7 +43,22 @@ See [PARAMETER_MAP.md](PARAMETER_MAP.md) for precise positions, types and units.
 - Query fourth byte 00→01 for a few IDs yielded identical responses; no proof of high address extension.
 
 ## Next controlled experiment
-Latest capture: `ouman_l1_curve_restored.json`. All 128 response frames independently validated; 72 accepted, 56 rejected. Compared with `ouman_l1_curve_x4_11.json`, ID 65 offset 8 changed 11→10 and only timestamps in IDs 2,3,36,38 otherwise changed. Both curve blocks are restored to their original coordinate values. Curve mapping complete (18/18 editable fields). Subsequent full upper-range sweep `ouman_scan_128_255.json` found no additional accepted IDs. Next experiment to be selected with the operator; no serial write commands have been established.
+Latest capture: `ouman_l1_room_comp_min16.json`. Current L1 room setpoint 21.5°C, gain 5.0, minimum 16°C, measured room 25°C. Next proposed test: restore minimum to 15°C and raise room setpoint to create positive compensation and investigate maximum limiting in subsequent controlled steps. No serial write commands established.
 
 ## Research continuity rule
 Every new session should record: previous capture, exact LCD change(s), next capture, frame validity, per-ID data-byte diff, which changes were independently confirmed, and next single test. Keep raw captures immutable.
+
+## L1 room sensor and compensation experiments
+
+Room sensor T3 was simulated with approximately 10 kΩ and enabled using Starttitoiminto (operator confirmed). ID 21 data offsets 0–1 returned 09 C4 (25.00°C, signed BE /100). ID 17 offset 3 changed 0C→02 on activation; offset 11 also changed, so the complete configuration table remains unresolved.
+
+| Capture | Room setpoint °C | Gain | Supply minimum °C | ID 15 offset 1 (signed) | Offset 10 | Offset 14 |
+|---|---:|---:|---:|---:|---:|---:|
+| ouman_l1_room_sensor_enabled.json | 21.5 | 4.0 | 15 | -13 | 0 | 17 |
+| ouman_l1_room_setpoint225.json | 22.5 | 4.0 | 15 | -10 | 0 | 20 |
+| ouman_l1_room_comp5.json | 21.5 | 5.0 | 15 | -18 | 3 | 15 |
+| ouman_l1_room_comp_min16.json | 21.5 | 5.0 | 16 | -19 | 4 | 16 |
+
+All four captures independently checked for request bytes, response length, checksum, payload consistency and accepted ID echo: 512/512 valid, 72 accepted and 56 rejected per sweep. ID 15 offset 0 remained 28 and offset 6 remained 2. Offset 1 is strongly supported as signed room compensation; offset 10 tracks positive minimum-limit correction (signedness unresolved); offset 14 tracks the final supply target including minimum clamping. The last row's displayed terms sum to 15 rather than 16; independent rounding or time-dependent calculation is possible but not established. No write semantics inferred. L2 equivalents remain candidates.
+
+Confirmed configuration: ID 12 offset 7 U8 /10 gain; ID 13 offsets 1–2 U16 BE /10 °C room setpoint.
