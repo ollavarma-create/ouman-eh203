@@ -28,3 +28,5 @@ All mappings distinguish **confirmed by changing one LCD setting** from **candid
 4. Only after independent write-command validation: selective, model-aware settings backup/restore with verification and rollback safeguards.
 
 This repository is not affiliated with or endorsed by Ouman. See [LICENSE](LICENSE).
+
+ID 12 L1 room compensation gain write (5.0→4.9) also verified by full-block readback and LCD.
