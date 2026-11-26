@@ -129,3 +129,7 @@ All four captures independently checked for request bytes, response length, chec
 Seven data bytes: year U16 BE, then month, day, hour, minute, second (U8 each). Both IDs readable; ID 2 write verified on firmware 2.15, ID 3 write untested. See [PROTOCOL.md](PROTOCOL.md) for exact evidence.
 
 ID 13 L1 room setpoint serial write and power-cycle persistence confirmed by operator; other fields in the block were preserved, not independently write-tested.
+
+## ID 65 L1 five-point curve Y3 serial write — 2026-11-26
+
+Dry run `ouman-write-fo016u6o.json`; actual write `ouman-write-lxoj52t3.json`. Firmware 2.15, Y3 25→26°C at ID 65 data offset 3. All 16 actual TX/RX frames independently validated for STX, length, SUM8 and echoed ID. Write ACK `02 06 02 00 41 49`. Full 31-byte readback matches proposed block; only offset 3 changes 19→1A. ID 12 mirror automatically changes only offset 1 from 19→1A without an ID 12 write. Operator confirms LCD 0°C=26°C. Persistence and restoration not yet tested. This proves synchronization for this field and direction only. Raw JSON remains local.
