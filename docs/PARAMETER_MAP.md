@@ -10,6 +10,7 @@
 | 3 | uint8 °C | L1 supply minimum | confirmed 15→16 |
 | 4 | uint8 °C | L1 supply maximum | confirmed 50→51 |
 | 5 | uint8 °C | night reduction | confirmed 0→3 |
+| 7 | uint8 /10 | L1 room compensation gain | confirmed 4.0→5.0 (`28→32`) |
 | 8 | uint8 °C | L1mv.min(0°C) | confirmed 10→11 |
 | 9 | uint8 °C | L1mv.min(-20°C) | confirmed 30→31 |
 | 10 | uint8 °C | Pal.min(0°C) | confirmed 5→6 |
@@ -26,7 +27,7 @@ All other ID 12 bytes are undecoded. Offset 9 has been restored to 30°C.
 
 | Offset(s) | Encoding | Meaning | Status |
 |---|---|---|---|
-| 1–2 | u16 BE, candidate scale 0.1 | L1 first value 215 | unknown |
+| 1–2 | u16 BE /10 °C | L1 room setpoint | confirmed 21.5→22.5→21.5 |
 | 3–4 | u16 BE °C | L1 P band | confirmed 140→150 |
 | 5–6 | u16 BE seconds | L1 I time | confirmed 50→60 |
 | 7–8 | u16 BE /10 seconds | L1 D time | confirmed 0→15 for 1.5s |
@@ -37,7 +38,7 @@ All other ID 12 bytes are undecoded. Offset 9 has been restored to 30°C.
 | 17–18 | u16 BE /10 seconds | L2 D time | confirmed 0→15 for 1.5s, restored to 0 |
 | 19–20 | u16 BE seconds | L2 actuator time | confirmed 150→160 |
 
-Both groups have experimentally confirmed P/I/D and actuator travel time. The two values 215 remain unknown.
+Both groups have experimentally confirmed P/I/D and actuator travel time. The L1 room setpoint is confirmed; L2 equivalent remains a candidate.
 
 ## ID 14 — L2 configuration (31 data bytes)
 
@@ -57,7 +58,7 @@ Both groups have experimentally confirmed P/I/D and actuator travel time. The tw
 
 - Data offset 6 correlates with the autumn drying adjustment (2→3).
 - Data offset 13 changed with the L1 curve parallel shift 0→-2.
-- Offset 14 changed in tests consistent with the final L1 target, but complete semantics and scaling remain **hypotheses**.
+- Offset 14 tracks the final L1 target in room compensation and minimum-limit tests; see experiment table below.
 - Offset 21 changed 2→3 with L2 autumn drying; offset 26 changed 48→49 while offset 15 remained 46. This supports the hypothesis of L2 active autumn correction and final target, respectively; exact semantics remain unverified.
 - Offset 25 changed 0→-2 and back to 0 with L2 parallel shift; offset 26 changed 49→46→48 across autumn/shift experiments, consistent with base 46 plus autumn correction and shift. Final target semantics still require LCD confirmation.
 - No assertion that ID 15 is a writable configuration block.
@@ -109,3 +110,16 @@ All 18 editable fields across both blocks are confirmed; ID 12 offsets 0–2 mir
 ## Confidence and scope
 
 A field's position in a *read response* does **not** imply a writeable field or a safe restore action. Firmware 2.15 only has been tested. Detailed experiment names are in [CAPTURE_MANIFEST.md](../research/CAPTURE_MANIFEST.md).
+
+## L1 room sensor and compensation experiments
+
+Room sensor T3 was simulated with approximately 10 kΩ and enabled using Starttitoiminto (operator confirmed). ID 21 data offsets 0–1 returned 09 C4 (25.00°C, signed BE /100). ID 17 offset 3 changed 0C→02 on activation; offset 11 also changed, so the complete configuration table remains unresolved.
+
+| Capture | Room setpoint °C | Gain | Supply minimum °C | ID 15 offset 1 (signed) | Offset 10 | Offset 14 |
+|---|---:|---:|---:|---:|---:|---:|
+| ouman_l1_room_sensor_enabled.json | 21.5 | 4.0 | 15 | -13 | 0 | 17 |
+| ouman_l1_room_setpoint225.json | 22.5 | 4.0 | 15 | -10 | 0 | 20 |
+| ouman_l1_room_comp5.json | 21.5 | 5.0 | 15 | -18 | 3 | 15 |
+| ouman_l1_room_comp_min16.json | 21.5 | 5.0 | 16 | -19 | 4 | 16 |
+
+All four captures independently checked for request bytes, response length, checksum, payload consistency and accepted ID echo: 512/512 valid, 72 accepted and 56 rejected per sweep. ID 15 offset 0 remained 28 and offset 6 remained 2. Offset 1 is strongly supported as signed room compensation; offset 10 tracks positive minimum-limit correction (signedness unresolved); offset 14 tracks the final supply target including minimum clamping. The last row's displayed terms sum to 15 rather than 16; independent rounding or time-dependent calculation is possible but not established. No write semantics inferred. L2 equivalents remain candidates.
