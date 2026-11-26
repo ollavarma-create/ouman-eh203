@@ -20,7 +20,7 @@
 | 26 | uint8 °C | L1 deviation alarm threshold | confirmed 25→26 |
 | 27 | int8 °C | L1 parallel curve shift | confirmed 0→-2 (`00→FE`) |
 
-All other ID 12 bytes are undecoded. Most recent tested setting offset 9 was 31°C; restore to original 30°C at next experiment.
+All other ID 12 bytes are undecoded. Offset 9 has been restored to 30°C.
 
 ## ID 13 — L1/L2 tuning (31 data bytes)
 
@@ -42,7 +42,8 @@ The L1 and L2 groups look symmetric but **only L2 P** has been experimentally ch
 ## ID 14 — L2 configuration (31 data bytes)
 
 - Data offset **22**, uint8 °C: L2 deviation alarm, **confirmed** 25→26.
-- Offset **7** = 10 and offset **8** = 30 are **candidates** for L2mv.min(0) and L2mv.min(-20), respectively. Neither has been changed yet.
+- Offset **7**, uint8 °C: L2mv.min(0), **confirmed** 10→11, restored to 10.
+- Offset **8**, uint8 °C: L2mv.min(-20), **confirmed** 30→31; restore to 30 at next experiment.
 - Other values are not verified; do not copy L1 positional assumptions to L2.
 
 ## ID 15 — calculated settings, not fully decoded
