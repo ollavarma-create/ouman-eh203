@@ -30,3 +30,9 @@ All mappings distinguish **confirmed by changing one LCD setting** from **candid
 This repository is not affiliated with or endorsed by Ouman. See [LICENSE](LICENSE).
 
 ID 12 L1 room compensation gain write (5.0→4.9) also verified by full-block readback and LCD.
+
+## Experimental bench writer
+
+`python research/scripts/write_parameter.py --parameter l1_room_gain --expect 4.9 --value 5.0 --dry-run`
+
+Remove `--dry-run` only on the bench and explicitly confirm. Only tested transitions 4.9–5.0 gain and 25.0–25.1°C setpoint are allowed. Identity check requires EH-203 firmware 2.15. Logs (including original block and serial number) are saved in `write-captures/`; keep private unless approved. No automatic retries or rollback. Run tests with `python -m unittest discover -s tests`.
