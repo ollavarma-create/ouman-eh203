@@ -53,4 +53,7 @@ Other source reference files: `EH-203.xml` and `EH-203.dev` describe **Modbus** 
 - `ouman_l2_max71.json`: ordinary L2 supply maximum 70→71°C.
 
 - `ouman_l2_night3.json`: L2 night reduction 0→3°C.
-- `ouman_l2_autumn3.json`: L2 autumn drying 2→3°C; latest capture.
+- `ouman_l2_autumn3.json`: L2 autumn drying 2→3°C.
+
+- `ouman_l2_shift_minus2.json`: L2 parallel shift 0→−2°C.
+- `ouman_l2_outdoor_delay3.json`: L2 outdoor delay 0→3h; latest capture.
