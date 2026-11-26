@@ -61,4 +61,18 @@ Other source reference files: `EH-203.xml` and `EH-203.dev` describe **Modbus** 
 ## L2 tuning continuation
 - `ouman_l2_i60.json`: L2 I 50→60s.
 - `ouman_l2_d15.json`: L2 D 0→1.5s.
-- `ouman_l2_motor160.json`: L2 actuator travel 150→160s; latest capture.
+- `ouman_l2_motor160.json`: L2 actuator travel 150→160s.
+
+## Five-point curve experiments (IDs 0–127)
+- `ouman_l1_curve0_26.json`: L1 Y3 25→26.
+- `ouman_l1_curve_x_minus2.json`: L1 X3 0→−2.
+- `ouman_l2_curve0_43.json`: L2 Y3 42→43.
+- `ouman_l2_curve_x_minus2.json`: L2 X3 0→−2.
+- `ouman_l2_curve_x2_minus11.json`: L2 X2 −10→−11.
+- `ouman_l2_curve_x4_11.json`: L2 X4 10→11.
+- `ouman_l2_curve_y2_53.json`: L2 Y2 52→53.
+- `ouman_l2_curve_y4_32.json`: L2 Y4 31→32.
+- `ouman_l2_curve_y1_63.json`: L2 Y1 62→63.
+- `ouman_l2_curve_y5_21.json`: L2 Y5 20→21; latest capture.
+
+Previous test values were restored during the sequence; filenames identify the newly changed field. Curve-type experiment captures are planned, not yet collected.
