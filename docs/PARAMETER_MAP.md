@@ -6,7 +6,7 @@
 
 | Data offset | Format | Meaning | Status |
 |---:|---|---|---|
-| 0,1,2 | uint8 °C | Y1/Y3/Y5 mirrors of ID 65 | Y3 confirmed; endpoints candidate |
+| 0,1,2 | uint8 °C | Y1/Y3/Y5 mirrors of ID 65 | all confirmed |
 | 3 | uint8 °C | L1 supply minimum | confirmed 15→16 |
 | 4 | uint8 °C | L1 supply maximum | confirmed 50→51 |
 | 5 | uint8 °C | night reduction | confirmed 0→3 |
@@ -88,21 +88,21 @@ Remaining offsets undecoded. The array starts with data byte 0; never shift offs
 - **ID 51**: DHW motor-command percent, matched LCD 100% (not a controlled output sweep).
 ## IDs 65 and 66 — five-point heating curves (31 data bytes each)
 
-ID 65 = L1; ID 66 = L2. LCD observations establish fixed outdoor endpoints −20 and +20°C and three editable interior X coordinates. All five Y coordinates are editable.
+ID 65 = L1; ID 66 = L2. LCD observations establish non-editable outer X coordinates and three editable interior X coordinates. The outer X values −20 and +20°C are assumed from the manual examples, not independently verified. All five Y coordinates are editable.
 
 | Data offset | Format | Field | L1 status | L2 status |
 |---:|---|---|---|---|
 | 0 | enum8 | curve type: 0 = five-point, 1 = three-point | confirmed 0→1→0 | confirmed 0→1→0 |
-| 1 | uint8 °C | Y1 | candidate | confirmed 62→63 |
-| 2 | uint8 °C | Y2 | candidate | confirmed 52→53 |
+| 1 | uint8 °C | Y1 | confirmed 38→39 | confirmed 62→63 |
+| 2 | uint8 °C | Y2 | confirmed 31→34 | confirmed 52→53 |
 | 3 | uint8 °C | Y3 | confirmed 25→26 | confirmed 42→43 |
-| 4 | uint8 °C | Y4 | candidate | confirmed 31→32 |
-| 5 | uint8 °C | Y5 | candidate | confirmed 20→21 |
-| 6 | int8 °C | X2 | candidate | confirmed −10→−11 |
+| 4 | uint8 °C | Y4 | confirmed 22→23 | confirmed 31→32 |
+| 5 | uint8 °C | Y5 | confirmed 20→21 | confirmed 20→21 |
+| 6 | int8 °C | X2 | confirmed −12→−11 | confirmed −10→−11 |
 | 7 | int8 °C | X3 | confirmed 0→−2 | confirmed 0→−2 |
-| 8 | int8 °C | X4 | candidate | confirmed 10→11 |
+| 8 | int8 °C | X4 | confirmed 10→11 | confirmed 10→11 |
 
-Offsets 9–30 remain unknown. Latest observed L1 points: (−20,38), (−12,31), (0,25), (10,22), (20,20). Latest L2 points: (−20,62), (−10,52), (0,42), (10,31), (20,20). Y2/Y4 and interior X changes did not mirror into ID 14; Y1/Y3/Y5 did. Whether ID 12/14 represent the active three-point curve or compatibility storage is unverified. The LCD curve-type selector changes offset 0 in both IDs 65 and 66 together; independent circuit selection is unverified.
+All 18 editable fields across both blocks are confirmed; ID 12 offsets 0–2 mirror L1 Y1/Y3/Y5. Final restoration capture `ouman_l1_curve_restored.json` confirms L1 X4 11→10, with only four timestamp blocks also changing. Offsets 9–30 remain unknown. Latest observed L1 points: (−20,38), (−12,34), (0,25), (10,22), (20,20). Latest L2 points: (−20,62), (−10,52), (0,42), (10,31), (20,20). Y2/Y4 and interior X changes did not mirror into ID 14; Y1/Y3/Y5 did. Whether ID 12/14 represent the active three-point curve or compatibility storage is unverified. The LCD curve-type selector changes offset 0 in both IDs 65 and 66 together; independent circuit selection is unverified.
 
 **Observed side effect:** on returning from three-point to five-point mode, L1 Y2 changed automatically from 34 to 31°C (ID 65 offset 2, `22→1F`), confirmed by the operator. L2 coordinates remained unchanged. The recalculation algorithm is unknown. Future restore design must account for mode-dependent coordinate changes: set mode before restoring coordinates and verify all fields by readback. This is a proposed safety requirement, not a tested write procedure.
 
