@@ -27,6 +27,7 @@
 - ID 51: DHW motor-command percentage (LCD matched 100%).
 - ID 65: L1 five-point curve, Y3 and X3 confirmed; six other editable coordinates remain candidates.
 - ID 66: L2 five-point curve, all eight editable coordinates confirmed. ID 14 offsets 0–2 mirror Y1/Y3/Y5. Fixed endpoint X coordinates established by LCD observations.
+- IDs 65/66 offset 0: curve type enum confirmed 0→1→0 (five-point→three-point→five-point). Returning to five-point mode automatically changed L1 Y2 34→31°C, as confirmed by the operator. L2 coordinates unchanged. Algorithm unknown; mode switching is not guaranteed lossless.
 - ID 15 changes during curve experiments support interpolation and autumn correction hypotheses; exact target semantics remain unverified.
 
 See [PARAMETER_MAP.md](PARAMETER_MAP.md) for precise positions, types and units.
@@ -41,7 +42,7 @@ See [PARAMETER_MAP.md](PARAMETER_MAP.md) for precise positions, types and units.
 - Query fourth byte 00→01 for a few IDs yielded identical responses; no proof of high address extension.
 
 ## Next controlled experiment
-Latest capture: `ouman_l2_curve_y5_21.json`. ID 66 Y5 = 21 and Y1 = 62; ID 14 mirrors both. Restore Y5 to 20°C and capture a fresh 0–127 baseline (`ouman_curve_type_5point.json`). Then change only the LCD curve type from 5-point to 3-point and capture `ouman_curve_type_3point.json`. Compare every data byte, including IDs 12,14,44,65,66; no selector offset or encoding is established. Observe whether the selector applies globally or per circuit, and whether switching changes curve values. Bench unit only; preserve original settings. Return to five-point mode after documenting the result.
+Latest capture: `ouman_curve_type_5point_restored.json`. Five-point mode restored in both circuits; L1 Y2 automatically changed to 31°C. Restore L1 Y2 manually to its original 34°C without changing other settings, then scan IDs 0–127 into `ouman_l1_curve_y2_restored34.json`. Expected ID 65 offset 2: `1F→22`; ID 15 calculated values may change. This will independently confirm L1 Y2. No serial write commands have been established.
 
 ## Research continuity rule
 Every new session should record: previous capture, exact LCD change(s), next capture, frame validity, per-ID data-byte diff, which changes were independently confirmed, and next single test. Keep raw captures immutable.
