@@ -10,7 +10,7 @@
 | 3 | uint8 °C | L1 supply minimum | confirmed 15→16 |
 | 4 | uint8 °C | L1 supply maximum | confirmed 50→51 |
 | 5 | uint8 °C | night reduction | confirmed 0→3 |
-| 7 | uint8 /10 | L1 room compensation gain | confirmed 4.0→5.0 (`28→32`) |
+| 7 | uint8 /10 | L1 room compensation gain | confirmed 4.0→5.0 (`28→32`); serial write 5.0→4.9 verified |
 | 8 | uint8 °C | L1mv.min(0°C) | confirmed 10→11 |
 | 9 | uint8 °C | L1mv.min(-20°C) | confirmed 30→31 |
 | 10 | uint8 °C | Pal.min(0°C) | confirmed 5→6 |
