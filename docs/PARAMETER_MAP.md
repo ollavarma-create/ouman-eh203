@@ -92,6 +92,7 @@ ID 65 = L1; ID 66 = L2. LCD observations establish fixed outdoor endpoints −20
 
 | Data offset | Format | Field | L1 status | L2 status |
 |---:|---|---|---|---|
+| 0 | enum8 | curve type: 0 = five-point, 1 = three-point | confirmed 0→1→0 | confirmed 0→1→0 |
 | 1 | uint8 °C | Y1 | candidate | confirmed 62→63 |
 | 2 | uint8 °C | Y2 | candidate | confirmed 52→53 |
 | 3 | uint8 °C | Y3 | confirmed 25→26 | confirmed 42→43 |
@@ -101,7 +102,9 @@ ID 65 = L1; ID 66 = L2. LCD observations establish fixed outdoor endpoints −20
 | 7 | int8 °C | X3 | confirmed 0→−2 | confirmed 0→−2 |
 | 8 | int8 °C | X4 | candidate | confirmed 10→11 |
 
-Offsets 0 and 9–30 remain unknown. Latest observed L1 points: (−20,38), (−12,34), (0,25), (10,22), (20,20). Latest L2 points: (−20,62), (−10,52), (0,42), (10,31), (20,21). Restore L2 Y5 to 20 before the next test. Y2/Y4 and interior X changes did not mirror into ID 14; Y1/Y3/Y5 did. Whether ID 12/14 represent the active three-point curve or compatibility storage is unverified. The LCD curve-type selector (3-point/5-point) has no confirmed native field yet. Do not infer it from the presence of IDs 65/66.
+Offsets 9–30 remain unknown. Latest observed L1 points: (−20,38), (−12,31), (0,25), (10,22), (20,20). Latest L2 points: (−20,62), (−10,52), (0,42), (10,31), (20,20). Y2/Y4 and interior X changes did not mirror into ID 14; Y1/Y3/Y5 did. Whether ID 12/14 represent the active three-point curve or compatibility storage is unverified. The LCD curve-type selector changes offset 0 in both IDs 65 and 66 together; independent circuit selection is unverified.
+
+**Observed side effect:** on returning from three-point to five-point mode, L1 Y2 changed automatically from 34 to 31°C (ID 65 offset 2, `22→1F`), confirmed by the operator. L2 coordinates remained unchanged. The recalculation algorithm is unknown. Future restore design must account for mode-dependent coordinate changes: set mode before restoring coordinates and verify all fields by readback. This is a proposed safety requirement, not a tested write procedure.
 
 ## Confidence and scope
 
