@@ -45,7 +45,9 @@ The L1 and L2 groups look symmetric but **only L2 P** has been experimentally ch
 - Offset **7**, uint8 °C: L2mv.min(0), **confirmed** 10→11, restored to 10.
 - Offset **8**, uint8 °C: L2mv.min(-20), **confirmed** 30→31, restored to 30.
 - Offset **3**, uint8 °C: L2 supply minimum, **confirmed** 15→16, restored to 15.
-- Offset **4**, uint8 °C: L2 supply maximum, **confirmed** 70→71; restore to 70 at next experiment.
+- Offset **4**, uint8 °C: L2 supply maximum, **confirmed** 70→71; restored to 70.
+- Offset **5**, uint8 °C: L2 night reduction, **confirmed** 0→3, restored to 0.
+- Offset **9**, uint8 °C: L2 autumn drying, **confirmed** 2→3; restore to 2.
 - Other values are not verified; do not copy L1 positional assumptions to L2.
 
 ## ID 15 — calculated settings, not fully decoded
@@ -53,6 +55,7 @@ The L1 and L2 groups look symmetric but **only L2 P** has been experimentally ch
 - Data offset 6 correlates with the autumn drying adjustment (2→3).
 - Data offset 13 changed with the L1 curve parallel shift 0→-2.
 - Offset 14 changed in tests consistent with the final L1 target, but complete semantics and scaling remain **hypotheses**.
+- Offset 21 changed 2→3 with L2 autumn drying; offset 26 changed 48→49 while offset 15 remained 46. This supports the hypothesis of L2 active autumn correction and final target, respectively; exact semantics remain unverified.
 - No assertion that ID 15 is a writable configuration block.
 
 ## ID 16 — DHW configuration (31 data bytes)
