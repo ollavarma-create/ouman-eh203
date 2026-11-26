@@ -80,4 +80,13 @@ Previous test values were restored during the sequence; filenames identify the n
 ## Curve-type experiments (IDs 0–127)
 - `ouman_curve_type_5point.json`: five-point baseline; L2 Y5 restored to 20°C.
 - `ouman_curve_type_3point.json`: selector changed to three-point, IDs 65/66 offset 0 = 1.
-- `ouman_curve_type_5point_restored.json`: selector restored to five-point, IDs 65/66 offset 0 = 0; automatic L1 Y2 change 34→31°C confirmed by operator. Latest capture.
+- `ouman_curve_type_5point_restored.json`: selector restored to five-point, IDs 65/66 offset 0 = 0; automatic L1 Y2 change 34→31°C confirmed by operator.
+
+## L1 curve completion and restoration
+- `ouman_l1_curve_y2_restored34.json`: Y2 31→34°C.
+- `ouman_l1_curve_y4_23.json`: Y4 22→23°C.
+- `ouman_l1_curve_y1_39.json`: Y1 38→39°C.
+- `ouman_l1_curve_y5_21.json`: Y5 20→21°C.
+- `ouman_l1_curve_x2_minus11.json`: X2 −12→−11°C.
+- `ouman_l1_curve_x4_11.json`: X4 10→11°C.
+- `ouman_l1_curve_restored.json`: X4 11→10°C; both curves restored, latest capture. All 128 frames valid; only ID 65 and four timestamp blocks changed versus preceding capture.
