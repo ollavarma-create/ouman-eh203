@@ -73,6 +73,11 @@ Other source reference files: `EH-203.xml` and `EH-203.dev` describe **Modbus** 
 - `ouman_l2_curve_y2_53.json`: L2 Y2 52→53.
 - `ouman_l2_curve_y4_32.json`: L2 Y4 31→32.
 - `ouman_l2_curve_y1_63.json`: L2 Y1 62→63.
-- `ouman_l2_curve_y5_21.json`: L2 Y5 20→21; latest capture.
+- `ouman_l2_curve_y5_21.json`: L2 Y5 20→21 .
 
-Previous test values were restored during the sequence; filenames identify the newly changed field. Curve-type experiment captures are planned, not yet collected.
+Previous test values were restored during the sequence; filenames identify the newly changed field. 
+
+## Curve-type experiments (IDs 0–127)
+- `ouman_curve_type_5point.json`: five-point baseline; L2 Y5 restored to 20°C.
+- `ouman_curve_type_3point.json`: selector changed to three-point, IDs 65/66 offset 0 = 1.
+- `ouman_curve_type_5point_restored.json`: selector restored to five-point, IDs 65/66 offset 0 = 0; automatic L1 Y2 change 34→31°C confirmed by operator. Latest capture.
