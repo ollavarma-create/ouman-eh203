@@ -13,3 +13,6 @@ This is reverse-engineering research on a heating controller, **not an approved 
 - A successful read does not prove that the same field can safely be written.
 
 - Avoid periodic or redundant writes: nonvolatile memory technology and endurance are unknown. Write only changed, explicitly allowlisted settings and verify readback.
+## Backup and restore boundary
+
+Read-only raw snapshot of IDs 0–255 is feasible now. A portable configuration export must separately classify confirmed fields, mirrors, live values, identity and unknown data. Restore only independently write-tested allowlisted fields, with target snapshot, compatibility check, explicit diff/approval, read-modify-write, durable journal and full readback; never blindly replay raw blocks. Curve IDs 65/66 are canonical candidates; ID 65 Y3 mirror into ID 12 verified, other directions untested. General restore remains unvalidated. Next: operating modes, writer tests and staged bench restore.
