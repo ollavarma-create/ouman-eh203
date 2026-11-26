@@ -31,7 +31,7 @@ Each `ouman_*.json` file contains one read-only parameter sweep with entries key
 - `ouman_return_min0_6.json`: return min at 0°C, 5→6.
 - `ouman_return_min20_16.json`: return min at −20°C, 15→16.
 - `ouman_l1_supply_min0_11.json`: L1 supply min at 0°C, 10→11.
-- `ouman_l1_supply_min20_31.json`: L1 supply min at −20°C, 30→31; **latest capture**.
+- `ouman_l1_supply_min20_31.json`: L1 supply min at −20°C, 30→31.
 
 ## DHW (LV)
 - `ouman_lv_setpoint59.json`: DHW setpoint 58.0→59.0.
@@ -44,3 +44,7 @@ Each `ouman_*.json` file contains one read-only parameter sweep with entries key
 - `ouman_lv_alarmdelay610.json`: DHW alarm delay 600→610s.
 
 Other source reference files: `EH-203.xml` and `EH-203.dev` describe **Modbus** capabilities, not the native serial byte map. Observe Ouman's copyright/license before redistributing vendor content.
+
+## L2 supply limits
+- `ouman_l2_supply_min0_11.json`: 10→11°C at 0°C outdoor.
+- `ouman_l2_supply_min20_31.json`: 30→31°C at -20°C outdoor; latest capture.
