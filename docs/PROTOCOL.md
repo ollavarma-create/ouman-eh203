@@ -38,11 +38,30 @@ Other observed response sizes include ID 98 and 99, each 188 bytes (182 data byt
 3. Enforce full length == `length+4` and validate checksum.
 4. Before using a response, verify the `00 PP` echo (or handle the `00 FF` rejection).
 5. Preserve raw bytes and metadata for offline re-analysis; timestamps and changing sensor values are not setting changes.
-6. Start with read-only operations. Write-request format, transaction semantics and recovery are unknown.
+6. Start with read-only operations. Clock write framing is verified; configuration writes and recovery remain untested.
 
 ## Open protocol questions
 - Meaning of response header bits and changing event/status bytes.
 - Whether addressing above single-byte IDs exists.
-- Write commands and response/verification rules.
+- Configuration-block write semantics, rejection handling and persistence.
 - Read/transfer semantics for large blocks and any hidden EEPROM/configuration areas.
 - Firmware-dependent layouts.
+
+## Observed write request
+
+`02 82 NN 00 PP DATA... CC`, where NN = data length + 2 and CC is SUM8 excluding STX. Acknowledge by checking length, checksum and echoed ID, then independently read back. Only ID 2 clock writing is verified.
+
+## First successful serial write — 2026-11-26
+
+Bench EH-203 firmware 2.15, ID 2 clock. Operator-confirmed single write followed by two reads. Exact terminal transcript (all six frames checked for length and SUM8):
+
+```text
+TX: 02 82 09 00 02 07 EA 0B 1A 12 20 17 EC
+RX: 02 06 02 00 02 0A
+TX: 02 81 02 00 02 85
+RX: 02 2E 09 00 02 07 EA 0B 1A 12 20 17 98
+TX: 02 81 02 00 03 86
+RX: 02 06 09 00 03 07 EA 0B 1A 12 20 19 73
+```
+
+Written clock: 2026-11-26 18:32:23; ID 2 readback identical; ID 3 readback 18:32:25. The write acknowledgement has no data beyond the echoed ID. Header 06 was observed, not established as a universal success indicator. Persistence across power loss, ID 3 writability and configuration-block writes remain untested.
