@@ -14,6 +14,7 @@ PARAMETERS = {
     "l1_room_setpoint": (13, 1, 2, 250, 251),
     "l1_curve_y3": (65, 3, 1, 25, 26),
     "l1_curve_x2": (65, 6, 1, -12, -11),
+    "dhw_setpoint": (16, 1, 2, 580, 581),
 }
 
 def frame(cmd, pid, data=b""):
