@@ -6,7 +6,7 @@
 
 | Data offset | Format | Meaning | Status |
 |---:|---|---|---|
-| 0,1,2 | uint8 | three values 38/25/20 correlated with 3-point curve | candidate |
+| 0,1,2 | uint8 °C | Y1/Y3/Y5 mirrors of ID 65 | Y3 confirmed; endpoints candidate |
 | 3 | uint8 °C | L1 supply minimum | confirmed 15→16 |
 | 4 | uint8 °C | L1 supply maximum | confirmed 50→51 |
 | 5 | uint8 °C | night reduction | confirmed 0→3 |
@@ -50,6 +50,7 @@ Both groups have experimentally confirmed P/I/D and actuator travel time. The tw
 - Offset **9**, uint8 °C: L2 autumn drying, **confirmed** 2→3, restored to 2.
 - Offset **23**, int8 °C: L2 parallel curve shift, **confirmed** 0→-2 (`00→FE`), restored to 0.
 - Offset **15**, uint8 hours: L2 outdoor-temperature delay, **confirmed** 0→3, restored to 0.
+- Offsets **0,1,2**, uint8 °C: Y1/Y3/Y5 mirrors of ID 66, all confirmed by controlled changes.
 - Other values are not verified; do not copy L1 positional assumptions to L2.
 
 ## ID 15 — calculated settings, not fully decoded
@@ -85,8 +86,22 @@ Remaining offsets undecoded. The array starts with data byte 0; never shift offs
 
 - Temperature measurements use signed int16 BE /100 °C; observed raw sentinel `0x865A` on disconnected sensors. ID 18 outdoor and ID 20 L1 supply are verified by LCD/physical changes; other labelled IDs are observational rather than individually altered.
 - **ID 51**: DHW motor-command percent, matched LCD 100% (not a controlled output sweep).
-- **ID 65**: L1 five-point curve observed byte offsets 1–5 = `38,34,25,22,20`; offsets 6–8 = `-12,0,10` when read as signed int8. Five curve values agree with the LCD; individual field change experiment pending.
-- **ID 66**: appears to contain L2 five-point curve, **candidate only**.
+## IDs 65 and 66 — five-point heating curves (31 data bytes each)
+
+ID 65 = L1; ID 66 = L2. LCD observations establish fixed outdoor endpoints −20 and +20°C and three editable interior X coordinates. All five Y coordinates are editable.
+
+| Data offset | Format | Field | L1 status | L2 status |
+|---:|---|---|---|---|
+| 1 | uint8 °C | Y1 | candidate | confirmed 62→63 |
+| 2 | uint8 °C | Y2 | candidate | confirmed 52→53 |
+| 3 | uint8 °C | Y3 | confirmed 25→26 | confirmed 42→43 |
+| 4 | uint8 °C | Y4 | candidate | confirmed 31→32 |
+| 5 | uint8 °C | Y5 | candidate | confirmed 20→21 |
+| 6 | int8 °C | X2 | candidate | confirmed −10→−11 |
+| 7 | int8 °C | X3 | confirmed 0→−2 | confirmed 0→−2 |
+| 8 | int8 °C | X4 | candidate | confirmed 10→11 |
+
+Offsets 0 and 9–30 remain unknown. Latest observed L1 points: (−20,38), (−12,34), (0,25), (10,22), (20,20). Latest L2 points: (−20,62), (−10,52), (0,42), (10,31), (20,21). Restore L2 Y5 to 20 before the next test. Y2/Y4 and interior X changes did not mirror into ID 14; Y1/Y3/Y5 did. Whether ID 12/14 represent the active three-point curve or compatibility storage is unverified. The LCD curve-type selector (3-point/5-point) has no confirmed native field yet. Do not infer it from the presence of IDs 65/66.
 
 ## Confidence and scope
 
