@@ -3,7 +3,7 @@
 ## Test setup
 - Ouman EH-203, software version **2.15**, observed serial **10004680**.
 - Native serial protocol, 4800 baud, 8N1, USB-to-RS232 PL2303 via Fedora, `/dev/ttyUSB0`.
-- LCD service menus used for controlled single-parameter changes; read-only serial sweep IDs 0–63 after each change.
+- LCD service menus used for controlled single-parameter changes; read-only serial sweeps IDs 0–63 initially and 0–127 for curve experiments.
 - The present captures are from **one bench controller**. Do not extrapolate compatibility to other firmware without tests.
 
 ## Verified fundamentals
@@ -25,7 +25,9 @@
 - ID 16: DHW setpoint, feedforward, P/I/D, fast-drive %, alarm delay, deviation alarm threshold.
 - ID 44: ventilation-related threshold offset 8 (display label `Vent.keskisulk`) and deviation alarm delay offset 28.
 - ID 51: DHW motor-command percentage (LCD matched 100%).
-- ID 65: observed 5-point L1 heating curve values match LCD, but **individual curve-point modification has not been tested**.
+- ID 65: L1 five-point curve, Y3 and X3 confirmed; six other editable coordinates remain candidates.
+- ID 66: L2 five-point curve, all eight editable coordinates confirmed. ID 14 offsets 0–2 mirror Y1/Y3/Y5. Fixed endpoint X coordinates established by LCD observations.
+- ID 15 changes during curve experiments support interpolation and autumn correction hypotheses; exact target semantics remain unverified.
 
 See [PARAMETER_MAP.md](PARAMETER_MAP.md) for precise positions, types and units.
 
@@ -39,9 +41,7 @@ See [PARAMETER_MAP.md](PARAMETER_MAP.md) for precise positions, types and units.
 - Query fourth byte 00→01 for a few IDs yielded identical responses; no proof of high address extension.
 
 ## Next controlled experiment
-Latest capture: `ouman_l2_motor160.json`. Independent Python validation: 64/64 frames valid including payload consistency. Compared with `ouman_l2_d15.json`, ID 13 offsets 18 (15→0) and 20 (150→160) changed; remaining changes were timestamps in IDs 2,3,36,38.
-
-Restore L2 actuator travel time to 150s. Next proposed test: change the L1 five-point curve value at 0°C outdoor from 25 to 26°C, and capture IDs 0–127 to test ID 65 offset 3 and ID 12 offset 1. Save as `ouman_l1_curve0_26.json`.
+Latest capture: `ouman_l2_curve_y5_21.json`. ID 66 Y5 = 21 and Y1 = 62; ID 14 mirrors both. Restore Y5 to 20°C and capture a fresh 0–127 baseline (`ouman_curve_type_5point.json`). Then change only the LCD curve type from 5-point to 3-point and capture `ouman_curve_type_3point.json`. Compare every data byte, including IDs 12,14,44,65,66; no selector offset or encoding is established. Observe whether the selector applies globally or per circuit, and whether switching changes curve values. Bench unit only; preserve original settings. Return to five-point mode after documenting the result.
 
 ## Research continuity rule
 Every new session should record: previous capture, exact LCD change(s), next capture, frame validity, per-ID data-byte diff, which changes were independently confirmed, and next single test. Keep raw captures immutable.
