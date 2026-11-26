@@ -90,3 +90,6 @@ Previous test values were restored during the sequence; filenames identify the n
 - `ouman_l1_curve_x2_minus11.json`: X2 −12→−11°C.
 - `ouman_l1_curve_x4_11.json`: X4 10→11°C.
 - `ouman_l1_curve_restored.json`: X4 11→10°C; both curves restored, latest capture. All 128 frames valid; only ID 65 and four timestamp blocks changed versus preceding capture.
+
+## Upper ID range sweep
+- `ouman_scan_128_255.json`: all 128 IDs rejected with identical valid response `02 01 02 00 FF 02`; request and response checksums, lengths and payloads independently verified. Median response 26.535 ms. Completes the 0–255 read-command survey (72 accepted, 184 rejected overall).
