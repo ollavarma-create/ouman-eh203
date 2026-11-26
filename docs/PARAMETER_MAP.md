@@ -27,7 +27,7 @@ All other ID 12 bytes are undecoded. Offset 9 has been restored to 30°C.
 
 | Offset(s) | Encoding | Meaning | Status |
 |---|---|---|---|
-| 1–2 | u16 BE /10 °C | L1 room setpoint | confirmed 21.5→22.5→21.5 |
+| 1–2 | u16 BE /10 °C | L1 room setpoint | confirmed 21.5→22.5→21.5; serial write 25.0→25.1 verified |
 | 3–4 | u16 BE °C | L1 P band | confirmed 140→150 |
 | 5–6 | u16 BE seconds | L1 I time | confirmed 50→60 |
 | 7–8 | u16 BE /10 seconds | L1 D time | confirmed 0→15 for 1.5s |
@@ -127,3 +127,5 @@ All four captures independently checked for request bytes, response length, chec
 ## IDs 2 and 3 — clock
 
 Seven data bytes: year U16 BE, then month, day, hour, minute, second (U8 each). Both IDs readable; ID 2 write verified on firmware 2.15, ID 3 write untested. See [PROTOCOL.md](PROTOCOL.md) for exact evidence.
+
+ID 13 L1 room setpoint serial write and power-cycle persistence confirmed by operator; other fields in the block were preserved, not independently write-tested.
