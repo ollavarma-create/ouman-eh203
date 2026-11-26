@@ -13,6 +13,7 @@ PARAMETERS = {
     "l1_room_gain": (12, 7, 1, 49, 50),
     "l1_room_setpoint": (13, 1, 2, 250, 251),
     "l1_curve_y3": (65, 3, 1, 25, 26),
+    "l1_curve_x2": (65, 6, 1, -12, -11),
 }
 
 def frame(cmd, pid, data=b""):
@@ -35,10 +36,10 @@ def raw_value(value, low, high, scale=10):
     except InvalidOperation as exc:
         raise ValueError("Invalid decimal") from exc
 
-def patch(data, offset, width, expected, target):
-    if len(data) != 31 or int.from_bytes(data[offset:offset+width], "big") != expected:
+def patch(data, offset, width, expected, target, signed=False):
+    if len(data) != 31 or int.from_bytes(data[offset:offset+width], "big", signed=signed) != expected:
         raise ValueError("Unexpected original block or value")
-    return data[:offset]+target.to_bytes(width,"big")+data[offset+width:]
+    return data[:offset]+target.to_bytes(width,"big",signed=signed)+data[offset+width:]
 
 def save(path, record):
     fd, name = tempfile.mkstemp(dir=path.parent, prefix=".write-")
@@ -89,13 +90,17 @@ def run(ser, args, path, record, confirm):
     record["serial_number"] = int.from_bytes(ident[:4],"little")
     original = decode(exchange(frame(0x81,pid)),pid,31)
     if pid == 65:
-        if original[0] != 0 or not original[2] >= target >= original[4]:
-            raise ValueError('Require five-point mode and monotonic neighboring Y values')
+        if original[0] != 0:
+            raise ValueError('Require five-point mode')
+        if offset == 3 and not original[2] >= target >= original[4]:
+            raise ValueError('Require monotonic neighboring Y values')
+        if offset == 6 and not -20 < target < int.from_bytes(original[7:8], 'big', signed=True):
+            raise ValueError('Require strictly increasing X coordinates')
         mirror = decode(exchange(frame(0x81,12)),12,31)
-        if mirror[1] != expected:
+        if mirror[1] != (expected if offset == 3 else original[3]):
             raise ValueError('Unexpected ID 12 mirror before write')
         record['mirror_before'] = mirror.hex(' ')
-    modified = patch(original,offset,width,expected,target)
+    modified = patch(original,offset,width,expected,target,signed=(pid == 65 and offset == 6))
     record.update(original=original.hex(" "), proposed=modified.hex(" "))
     save(path,record)
     print("Original:",original.hex(" "))
@@ -129,7 +134,8 @@ def run(ser, args, path, record, confirm):
     if pid == 65:
         after = decode(exchange(frame(0x81,12)),12,31)
         record["mirror_after"] = after.hex(" ")
-        record["mirror_matches"] = after == mirror[:1]+bytes((target,))+mirror[2:]
+        expected_mirror = mirror[:1]+bytes((target,))+mirror[2:] if offset == 3 else mirror
+        record["mirror_matches"] = after == expected_mirror
         if not record["mirror_matches"]:
             raise ValueError("Curve written but mirror differs from expected; inspect manually")
     return "verified"
@@ -145,7 +151,7 @@ def main():
     args=p.parse_args()
     _,_,_,low,high=PARAMETERS[args.parameter]
     try:
-        scale = 1 if args.parameter == 'l1_curve_y3' else 10
+        scale = 1 if args.parameter in ('l1_curve_y3', 'l1_curve_x2') else 10
         raw_value(args.expect,low,high,scale)
         raw_value(args.value,low,high,scale)
     except ValueError as exc:
