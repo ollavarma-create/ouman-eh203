@@ -1,0 +1,30 @@
+# Ouman EH-203 native serial protocol — independent research
+
+An experimental, **unofficial** reverse-engineering project for the Ouman EH-203 heating controller (tested on firmware **2.15**). The goal is to preserve reproducible evidence, build read-only diagnostics, and eventually support ESPHome/Home Assistant. A possible settings backup/restore tool is a **future research objective**, not an implemented feature.
+
+**Project status (2026-11-26):** Native RS-232 **4800 8N1** read requests and checksums are known; many temperature measurements and configuration fields are mapped by controlled LCD-setting experiments. **No safe write command has been established.**
+
+Start with:
+- [Research status and next experiment](docs/RESEARCH_STATUS.md)
+- [Protocol framing](docs/PROTOCOL.md)
+- [Confirmed parameters](docs/PARAMETER_MAP.md)
+- [Hardware and test setup](docs/HARDWARE.md)
+- [Safety rules](docs/SAFETY.md)
+- [Capture inventory](research/CAPTURE_MANIFEST.md)
+
+A simple read-only Python scanner is in [research/scripts/scan.py](research/scripts/scan.py). It requires `pyserial` and does not change settings.
+
+## Important boundaries
+
+The EH-203 native serial interface is **not Modbus RTU**. The official EH-203 Modbus template and `EH-203.dev` file describe a *different interface*. Native parameter IDs must not be interpreted as Modbus register addresses.
+
+All mappings distinguish **confirmed by changing one LCD setting** from **candidate, inferred or unknown**. Even confirmed byte mappings may be firmware-dependent. Read-only exploration is the default; experimenting with writes on a heating installation could affect safety.
+
+## Longer-term vision
+
+1. Reproducible protocol documentation and captures.
+2. Python read-only status/diagnostics.
+3. ESP32 + MAX3232 ESPHome component and Home Assistant entities.
+4. Only after independent write-command validation: selective, model-aware settings backup/restore with verification and rollback safeguards.
+
+This repository is not affiliated with or endorsed by Ouman. See [LICENSE](LICENSE).
