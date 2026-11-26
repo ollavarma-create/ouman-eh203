@@ -158,3 +158,7 @@ RX: 02 2E 02 00 0C 3C
 TX: 02 81 02 00 0C 8F
 RX: 02 36 21 00 0C 26 19 14 0F 32 00 00 31 0A 1E 05 0F 46 FA 02 00 64 00 00 02 05 00 01 00 00 00 19 00 00 00 00 2B
 ```
+
+## Reusable writer hardware validation — 2026-11-26
+
+`ouman-write-8f3tk54o.json`: dry run, identity EH-203 firmware 2.15, ID 12 gain 4.9→5.0 preview. `ouman-write-p9yh44zi.json`: actual restoration, status verified, five exchanges (identity, original read, pre-write recheck, write, readback). All ten frames independently checked for length and SUM8; 31-byte proposed and readback blocks identical, only offset 7 changed 31→32. Operator confirmed LCD 5.0. Original JSON files not committed. Unit test execution and failure-path hardware testing not reported.
