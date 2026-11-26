@@ -21,7 +21,7 @@
 - ID 1: bytes 0–3 of data are the observed serial number as little-endian uint32; version byte 8 = 215 for firmware 2.15.
 - ID 12: offsets 3,4,5,8,9,10,11,12,14,19,26,27.
 - ID 13: L1 PID P/I/D and L1 actuator time; L2 P control confirmed.
-- ID 14: offsets 3 and 4 = ordinary L2 supply minimum and maximum; offsets 7 and 8 = L2 supply minimum at 0°C and -20°C; offset 22 = L2 deviation alarm threshold.
+- ID 14: offsets 3 and 4 = ordinary L2 supply minimum and maximum; offsets 7 and 8 = L2 supply minimum at 0°C and -20°C; offset 22 = L2 deviation alarm threshold; offset 5 = night reduction; offset 9 = autumn drying.
 - ID 16: DHW setpoint, feedforward, P/I/D, fast-drive %, alarm delay, deviation alarm threshold.
 - ID 44: ventilation-related threshold offset 8 (display label `Vent.keskisulk`) and deviation alarm delay offset 28.
 - ID 51: DHW motor-command percentage (LCD matched 100%).
@@ -39,9 +39,9 @@ See [PARAMETER_MAP.md](PARAMETER_MAP.md) for precise positions, types and units.
 - Query fourth byte 00→01 for a few IDs yielded identical responses; no proof of high address extension.
 
 ## Next controlled experiment
-Latest capture: `ouman_l2_max71.json`. All 64 frames passed independent length/checksum checks. Compared with `ouman_l2_min16.json`, only ID 14 offsets 3 (16→15) and 4 (70→71) changed apart from timestamps in IDs 2,3,36,38.
+Latest capture: `ouman_l2_autumn3.json`. Independent Python validation: 64/64 frames valid, including payload consistency. Compared with `ouman_l2_night3.json`, ID 14 offsets 5 (3→0) and 9 (2→3), ID 15 offsets 21 (2→3) and 26 (48→49) changed; remaining changes were timestamps in IDs 2,3,36,38.
 
-Restore L2 supply maximum to 70°C, then change L2 night reduction 0→3°C if available. Predicted ID 14 offset 4: 47→46; offset 5: 00→03 (hypothesis). Save as `ouman_l2_night3.json`.
+Restore L2 autumn drying to 2°C and change L2 parallel curve shift 0→-2°C if available. Save as `ouman_l2_shift_minus2.json`. ID 14 shift location unknown; ID 15 offset 25 is a candidate for active shift, offset 26 a candidate for final target.
 
 ## Research continuity rule
 Every new session should record: previous capture, exact LCD change(s), next capture, frame validity, per-ID data-byte diff, which changes were independently confirmed, and next single test. Keep raw captures immutable.
