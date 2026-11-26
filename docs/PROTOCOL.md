@@ -38,7 +38,7 @@ Other observed response sizes include ID 98 and 99, each 188 bytes (182 data byt
 3. Enforce full length == `length+4` and validate checksum.
 4. Before using a response, verify the `00 PP` echo (or handle the `00 FF` rejection).
 5. Preserve raw bytes and metadata for offline re-analysis; timestamps and changing sensor values are not setting changes.
-6. Start with read-only operations. Clock write framing is verified; configuration writes and recovery remain untested.
+6. Start with read-only operations. Clock and ID 13 room setpoint writes are verified; other configuration writes and recovery remain untested.
 
 ## Open protocol questions
 - Meaning of response header bits and changing event/status bytes.
@@ -49,7 +49,7 @@ Other observed response sizes include ID 98 and 99, each 188 bytes (182 data byt
 
 ## Observed write request
 
-`02 82 NN 00 PP DATA... CC`, where NN = data length + 2 and CC is SUM8 excluding STX. Acknowledge by checking length, checksum and echoed ID, then independently read back. Only ID 2 clock writing is verified.
+`02 82 NN 00 PP DATA... CC`, where NN = data length + 2 and CC is SUM8 excluding STX. Acknowledge by checking length, checksum and echoed ID, then independently read back. ID 2 clock and ID 13 L1 room setpoint writes are verified.
 
 ## First successful serial write — 2026-11-26
 
@@ -65,3 +65,16 @@ RX: 02 06 09 00 03 07 EA 0B 1A 12 20 19 73
 ```
 
 Written clock: 2026-11-26 18:32:23; ID 2 readback identical; ID 3 readback 18:32:25. The write acknowledgement has no data beyond the echoed ID. Header 06 was observed, not established as a universal success indicator. Persistence across power loss, ID 3 writability and configuration-block writes remain untested.
+
+## ID 13 configuration write and persistence — 2026-11-26
+
+Bench firmware 2.15: L1 room setpoint 25.0→25.1°C, U16 BE at data offsets 1–2. Read-modify-write preserved the other bytes; operator reported only offset 2 changed FA→FB and full block match. LCD independently confirmed 25.1°C. Operator subsequently confirmed the setting survived the requested power-cycle test; no post-reboot raw serial capture was supplied. Memory technology, endurance and general persistence of other fields remain unknown.
+
+```text
+TX: 02 82 21 00 0D 00 00 FB 00 8C 00 32 00 00 00 96 00 D7 00 8C 00 32 00 00 00 96 00 00 00 00 00 00 00 00 00 00 2A
+RX: 02 06 02 00 0D 15
+TX: 02 81 02 00 0D 90
+RX: 02 06 21 00 0D 00 00 FB 00 8C 00 32 00 00 00 96 00 D7 00 8C 00 32 00 00 00 96 00 00 00 00 00 00 00 00 00 00 AE
+```
+
+All four transcript frames checked for length and SUM8; the 31-byte write and readback data match exactly. Avoid redundant writes, automatic retries and periodic writes of unchanged settings.
