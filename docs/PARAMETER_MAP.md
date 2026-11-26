@@ -145,3 +145,22 @@ Dry run `ouman-write-k2wni0jf.json`, write `ouman-write-cx2byrsk.json`, restorat
 ## ID 16 DHW setpoint write experiment — 2026-11-26
 
 Dry run `ouman-write-xo_bodgm.json`, actual write `ouman-write-lt3_h3d1.json`, restoration `ouman-write-gri329gh.json`. U16BE offsets 1–2, scale 0.1°C, 58.0→58.1→58.0°C (0244→0245→0244). Both actual logs report verified; operator confirmed LCD both ways, restoration immediately visible. Restoration independently checked in Python: 10/10 frames pass STX, length, SUM8 and ID echo, write payload and readback match proposed, only offset 2 changes. ACK `02 06 02 00 10 18`. Persistence not separately tested. Raw logs not committed.
+
+## Motor configuration and restoration — 2026-11-26
+
+L1 motor type: ID 12 data offset 21; L2: ID 14 offset 17. U8 enum for both: 0 = three-state, 1 = 0–10 V, 2 = 2–10 V. ID 13 motor travel times: L1 offsets 9–10, L2 offsets 19–20, U16BE seconds. Separate 160 s captures support both mappings; restored values 150 s. Motor configuration serial writes remain untested.
+
+| Capture (JSON basename) | L1 type | L2 type | ID 49 | ID 50 | ID 51 |
+|---|---:|---:|---:|---:|---:|
+| ouman_motor_baseline | 0 | 0 | 0 | 0 | 100 |
+| ouman_l1_motor_0_10v | 1 | 0 | 0 | 0 | 100 |
+| ouman_l1_motor_2_10v | 2 | 0 | 0 | 0 | 100 |
+| ouman_l2_motor_0_10v | 0 | 1 | 0 | 2 | 100 |
+| ouman_l2_motor_2_10v | 0 | 2 | 0 | 11 | 100 |
+| ouman_motor_restored | 0 | 0 | 0 | 20 | 100 |
+
+Additional captures: ouman_l1_motor160.json and ouman_l2_motor160.json (64 IDs each). Final 128-ID capture differs from baseline only at IDs 2, 3, 36, 38, 46 and 50; IDs 12–14 identical. ID 50 is a candidate internal L2 command, not verified physical position or percentage. ID 49 remains a candidate L1 command. ID 51 DHW command previously LCD-confirmed. All eight motor captures (1792 frames) included in a fresh Python audit of 96 local JSON files (14980 frames, zero STX/length/SUM8 failures). This audit does not establish semantic validity of every field. Raw captures not uploaded to GitHub in this update.
+
+## Backup and restore boundary
+
+Read-only raw snapshot of IDs 0–255 is feasible now. A portable configuration export must separately classify confirmed fields, mirrors, live values, identity and unknown data. Restore only independently write-tested allowlisted fields, with target snapshot, compatibility check, explicit diff/approval, read-modify-write, durable journal and full readback; never blindly replay raw blocks. Curve IDs 65/66 are canonical candidates; ID 65 Y3 mirror into ID 12 verified, other directions untested. General restore remains unvalidated. Next: operating modes, writer tests and staged bench restore.
