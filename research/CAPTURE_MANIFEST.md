@@ -106,3 +106,20 @@ Room sensor T3 was simulated with approximately 10 kΩ and enabled using Startti
 | ouman_l1_room_comp_min16.json | 21.5 | 5.0 | 16 | -19 | 4 | 16 |
 
 All four captures independently checked for request bytes, response length, checksum, payload consistency and accepted ID echo: 512/512 valid, 72 accepted and 56 rejected per sweep. ID 15 offset 0 remained 28 and offset 6 remained 2. Offset 1 is strongly supported as signed room compensation; offset 10 tracks positive minimum-limit correction (signedness unresolved); offset 14 tracks the final supply target including minimum clamping. The last row's displayed terms sum to 15 rather than 16; independent rounding or time-dependent calculation is possible but not established. No write semantics inferred. L2 equivalents remain candidates.
+
+- `ouman_clock_before.json`: read-only IDs 2 and 3, both 2026-11-26 18:28:16; original not committed.
+
+## First successful serial write — 2026-11-26
+
+Bench EH-203 firmware 2.15, ID 2 clock. Operator-confirmed single write followed by two reads. Exact terminal transcript (all six frames checked for length and SUM8):
+
+```text
+TX: 02 82 09 00 02 07 EA 0B 1A 12 20 17 EC
+RX: 02 06 02 00 02 0A
+TX: 02 81 02 00 02 85
+RX: 02 2E 09 00 02 07 EA 0B 1A 12 20 17 98
+TX: 02 81 02 00 03 86
+RX: 02 06 09 00 03 07 EA 0B 1A 12 20 19 73
+```
+
+Written clock: 2026-11-26 18:32:23; ID 2 readback identical; ID 3 readback 18:32:25. The write acknowledgement has no data beyond the echoed ID. Header 06 was observed, not established as a universal success indicator. Persistence across power loss, ID 3 writability and configuration-block writes remain untested.
