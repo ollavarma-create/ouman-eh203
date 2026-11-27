@@ -9,6 +9,20 @@ class SimulatedSerial:
         self.writes = []
         self.fault = None
 
+    @classmethod
+    def from_backups(cls, original, factory):
+        from .backup import verify_file
+        verify_file(original)
+        verify_file(factory)
+        def blocks(obj):
+            return {int(k): bytes.fromhex(v['data']) for k,v in obj['records'].items() if v['status']=='accepted'}
+        initial, defaults = blocks(original), blocks(factory)
+        if initial.keys()!=defaults.keys() or initial[1][:9]!=defaults[1][:9]:
+            raise ValueError('Incompatible fixture pair')
+        sim=cls(initial)
+        sim.factory=defaults
+        return sim
+
     def reset_input_buffer(self):
         self.pending = b''
 
