@@ -205,6 +205,12 @@ def propose(source, pid, before):
                 raise ValueError('Burner mode requires separate dependency validation')
         if pid == 47 and not modified[3] <= modified[2] <= modified[1] <= modified[0]:
             raise ValueError('Pressure limits out of order')
+        if pid == 16:
+            for offset, initial, final in ((4,0,5),(6,65,72)):
+                if old[offset]!=target[offset]:
+                    if (old[offset],target[offset])!=(initial,final) or old[offset-1]!=0 or target[offset-1]!=0:
+                        raise ValueError('DHW parameter transition outside bench proposal')
+                    modified[offset]=target[offset]
         if pid == 14:
             for offset, initial, final in ((25,70,83),(26,5,9)):
                 if old[offset]!=target[offset]:
