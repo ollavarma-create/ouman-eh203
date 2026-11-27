@@ -24,3 +24,7 @@ ESPHome/Home Assistant must remain strictly read-only, with no write service or 
 ## Relay-specific boundaries
 
 Keep relay loads disconnected during bench experiments. Relay configuration can be coupled (230 V motor mode reserves both relays); do not independently replay configuration bytes. Exclude live overrides, countdowns and commanded states from portable backup/restore. Weekly schedules and persistent relay settings are read-mapped only, not write-validated. Relay names and temperature-control hysteresis are not yet readable through the mapped interface. Do not claim a complete portable backup.
+
+## Digital input restore boundary
+
+Mapped digital input functions, pulse factors, consumption interval and pump indication are candidates for portable configuration, not validated write targets. Preserve unknown adjacent bytes and inactive settings. Respect UI exclusivity and automatic measurement configuration dependencies. Changing pump indication can trigger a real alarm. Do not restore live alarm flags, timestamps, counters or acknowledgement state. Do not expose a header bit as an active-alarm safety sensor. ESPHome/Home Assistant must remain read-only.
