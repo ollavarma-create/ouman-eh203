@@ -1,8 +1,8 @@
 # Ouman EH-203 native serial protocol — independent research
 
-An experimental, **unofficial** reverse-engineering project for the Ouman EH-203 heating controller (tested on firmware **2.15**). The goal is to preserve reproducible evidence, build read-only diagnostics, and eventually support ESPHome/Home Assistant. A possible settings backup/restore tool is a **future research objective**, not an implemented feature.
+An experimental, **unofficial** reverse-engineering project for the Ouman EH-203 heating controller (tested on firmware **2.15**). The goal is to preserve reproducible evidence, build read-only diagnostics, and eventually support strictly read-only ESPHome/Home Assistant. A possible settings backup/restore tool is a **future research objective**, not an implemented feature.
 
-**Project status (2026-11-26):** Native RS-232 **4800 8N1** read requests and checksums are known; many temperature measurements and configuration fields are mapped by controlled LCD-setting experiments. **A single clock write (ID 2, command 0x82) has been verified on the bench with readback.** ID 13 L1 room setpoint write, full-block readback, LCD confirmation and operator-confirmed power-cycle persistence are also established. Other configuration writes remain experimental.
+**Project status (2026-11-27):** Native RS-232 **4800 8N1** read requests and checksums are known; many temperature measurements and configuration fields are mapped by controlled LCD-setting experiments. **A single clock write (ID 2, command 0x82) has been verified on the bench with readback.** ID 13 L1 room setpoint write, full-block readback, LCD confirmation and operator-confirmed power-cycle persistence are also established. Bench writes also verified for L1 gain, curve Y3/X2 and DHW setpoint; general restore remains experimental. Operating modes, DHW command percentage and weekly schedule read layouts are now mapped.
 
 Start with:
 - [Research status and next experiment](docs/RESEARCH_STATUS.md)
@@ -35,4 +35,8 @@ ID 12 L1 room compensation gain write (5.0→4.9) also verified by full-block re
 
 `python research/scripts/write_parameter.py --parameter l1_room_gain --expect 4.9 --value 5.0 --dry-run`
 
-Remove `--dry-run` only on the bench and explicitly confirm. Only tested transitions 4.9–5.0 gain and 25.0–25.1°C setpoint are allowed. Identity check requires EH-203 firmware 2.15. Logs (including original block and serial number) are saved in `write-captures/`; keep private unless approved. No automatic retries or rollback. Run tests with `python -m unittest discover -s tests`.
+Remove `--dry-run` only on the bench and explicitly confirm. The writer allowlist is limited to tested transitions: gain 4.9–5.0, room setpoint 25.0–25.1°C, L1 curve Y3 25–26°C, X2 −12 to −11°C and DHW setpoint 58.0–58.1°C. Identity check requires EH-203 firmware 2.15. Logs (including original block and serial number) are saved in `write-captures/`; keep private unless approved. No automatic retries or rollback. Run tests with `python -m unittest discover -s tests`.
+
+## Integration and backup roadmap
+
+ESPHome/Home Assistant will remain read-only (0x81 only). A separate backup/editor application will handle selective settings migration; no general restore or schedule writing is implemented. See the [research status](docs/RESEARCH_STATUS.md) for the November 27 findings.
