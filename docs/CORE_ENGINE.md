@@ -30,3 +30,39 @@ ouman-eh203 verify-persistence --source original.json \
 ```
 
 The original journal is not modified. The new report links the evidence by hashes, checks full captures, target identity, recorded writes and monitored state, and requires a zero-write plan. The power cycle is operator-attested, not independently detected. Reports are not signed. Acceptance is limited to the tested restore transitions and firmware 2.15; unknown parameters, GSM settings, other firmware and production deployment are not certified. No new hardware reset is required for offline verification.
+
+
+## Presentation metadata and factory reference
+
+The registry covers 82 decoded parameters. Metadata is bilingual (Finnish and
+English), but partial records are not a claim of complete manual verification.
+Missing labels, paths, ranges and descriptions remain null. The provisional
+`valve_center_close` field remains unresolved. Metadata never authorizes writes.
+
+Offline commands:
+
+```sh
+ouman-eh203 metadata --lang fi --key l1_supply_min
+ouman-eh203 metadata --lang en --output metadata.json
+ouman-eh203 compare-defaults --source tests/fixtures/eh203_215/factory_reset_pass1.json --confirm-factory-reset --output factory_comparison.json
+ouman-eh203 metadata --reference tests/fixtures/eh203_215/factory_reset_pass1.json --output metadata_215.json
+```
+
+The user-confirmed factory capture for firmware 2.15 has records SHA-256
+`f76181a776e6b0b028a9267880a4ff65e0cc542de4c239a89e85eae8cdc4bebf`.
+The physical comparison reported 53 matching documented defaults, zero
+differences and 29 without documented defaults. This is evidence from one
+controller, not a universal firmware specification. Observed defaults are
+kept separate from documented defaults. The DHW high alarm was observed at
+65 degrees C; the manual also lists 70 degrees C on page 28.
+
+GUI consumers must preserve unknown values, display documentation status,
+and treat menu paths and descriptions as provisional where incomplete.
+Manual ranges are not restore authorization. Enum mappings may be incomplete.
+Hidden three-point curve coordinates are stored values, not active control
+points. The reference fixture is supplied explicitly, not bundled at runtime.
+JSON exports refuse overwrite but are not atomic.
+
+The user reported 91 passing tests after the structural metadata audit.
+A complete bilingual semantic audit against both manuals remains outstanding.
+No additional physical reset is required for this documentation work.
