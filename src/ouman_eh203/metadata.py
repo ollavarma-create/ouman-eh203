@@ -109,6 +109,48 @@ for prefix,fi,en in [('l1','L1','H1'),('l2','L2','H2')]:
                  2:dict(fi='2–10 V',en='2–10 V')},
         dependencies=dict(unmapped_manual_option='230 VAC 3-point'))
 
+# Service settings (p. 23); special maintenance settings (p. 29).
+for key,fi,en,limits,default,circuit in [
+    ('l1_outdoor_delay','Ulkolämpötilan hidastus','OutdoorDelay',[0,20],2,'L1'),
+    ('l2_outdoor_delay','Ulkolämpötilan hidastus','OutdoorDelay',[0,20],0,'L2'),
+    ('dhw_high_alarm','Käyttöveden hälytysraja','HW alarm',[65,120],65,'LV'),
+    ('dhw_boost','Käyttöveden korotus','HW increase',[0,25],0,'LV'),
+]:
+    _add(key,fi,en,None,en,23,limits,default)
+    PARAMETERS[key].update(access_level='service',
+        menu_path=dict(fi=[circuit,'Huoltotila','Asetusarvot'],
+                       en=[{'L1':'H1','L2':'H2','LV':'HW'}[circuit],'Maint mode','Settings']))
+PARAMETERS['dhw_high_alarm']['dependencies']=dict(automatic_limit_increase='dhw_boost',
+    manual_default_conflict='p. 23: 65; p. 28: 70')
+PARAMETERS['dhw_boost']['dependencies']=dict(schedule='HW increase, clock functions, p. 14')
+
+for key,fi,en,lf,le,limits,default in [
+    ('room_delay','Huonelämpötilan hidastus','Room temperature delay','Huonel.hid.','Room delay',[0,2],0.5),
+    ('l1_return_max','Paluuveden maksimiraja','Return water maximum','Paluuv.max','RetWat.max',[25,95],70),
+    ('l1_return_min_0','Paluuveden minimi 0 °C','Return water minimum at 0 °C','Pal.min (0)','Ret.min (0)',[5,20],5),
+    ('l1_return_min_minus20','Paluuveden minimi −20 °C','Return water minimum at −20 °C','Pal.min (-20)','Ret.min (-20)',[10,50],15),
+    ('l1_mv_min_0','L1 valmiustilan menoveden minimi 0 °C','H1 standby supply minimum at 0 °C','L1mv Min(0)','H1SuppMin(0)',[5,20],10),
+    ('l2_mv_min_0','L2 valmiustilan menoveden minimi 0 °C','H2 standby supply minimum at 0 °C','L2mv Min(0)','H2SuppMin (0)',[5,20],10),
+    ('l1_mv_min_minus20','L1 valmiustilan menoveden minimi −20 °C','H1 standby supply minimum at −20 °C','L1mv Min(-20)','H1SupMin(-20)',[10,50],30),
+    ('l2_mv_min_minus20','L2 valmiustilan menoveden minimi −20 °C','H2 standby supply minimum at −20 °C','L2mv Min(-20)','H2SupMin(-20)',[10,50],30),
+    ('l1_deviation_alarm','L1 poikkeamahälytys','H1 deviation alarm','L1 Poikk.häl','H1 Dev.alarm',[1,75],25),
+    ('l2_deviation_alarm','L2 poikkeamahälytys','H2 deviation alarm','L2 Poikk.häl','H2 Dev.alarm',[1,75],25),
+    ('dhw_deviation_alarm','LV poikkeamahälytys','HW deviation alarm','LV Poikk.häl','HW Dev.alarm',[1,75],25),
+    ('deviation_alarm_delay','Poikkeamahälytyksen hidastus','Deviation alarm delay','PoikHälHid','DevAlaDela',[0,90],60),
+    ('power_limit','Tehonrajoitus','Output limit','Tehonraj.','Output lim',[0,999],999),
+    ('dhw_alarm_delay','LV-hälytyksen hidastus','HW alarm delay','LV-häl. hid','HW alrm dela',[0,700],600),
+    ('r1_outdoor_threshold','R1 ulkolämpötilaraja','Relay 1 outdoor temperature limit',None,'R1 Outd.',[-30,20],-15),
+]:
+    _add(key,fi,en,lf,le,29,limits,default)
+    PARAMETERS[key].update(access_level='special_service',
+        menu_path=dict(fi=['Huoltotila','Erikoishuolto','Asetusarvot'],
+                       en=['Mainten. mode','Special mainten.','Settings']))
+PARAMETERS['room_delay']['dependencies']=dict(used_by='l1_room_gain')
+PARAMETERS['r1_outdoor_threshold']['dependencies']=dict(mode='time/outdoor temperature',
+    manual_label_conflict='Finnish display example says R2 ulkol.; English says R1 Outd.')
+for key in ('l1_deviation_alarm','l2_deviation_alarm','dhw_deviation_alarm'):
+    PARAMETERS[key]['dependencies']=dict(delay_key='deviation_alarm_delay')
+
 def get_metadata(key):
     """Return a detached metadata record; unknown keys raise KeyError."""
     from copy import deepcopy
