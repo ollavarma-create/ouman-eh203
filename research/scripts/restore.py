@@ -205,6 +205,17 @@ def propose(source, pid, before):
                 raise ValueError('Burner mode requires separate dependency validation')
         if pid == 47 and not modified[3] <= modified[2] <= modified[1] <= modified[0]:
             raise ValueError('Pressure limits out of order')
+        if pid == 12:
+            desired_delay=target[20]
+            if block(source,14)[16]!=desired_delay or old[20]!=before[14][16]:
+                raise ValueError('Room delay mirror mismatch')
+            if old[20]!=desired_delay:
+                if (old[20],desired_delay)!=(5,15):
+                    raise ValueError('Room delay outside bench proposal')
+                modified[20]=desired_delay
+                mirror=bytearray(before[14])
+                mirror[16]=desired_delay
+                expected[14]=bytes(mirror)
         expected[pid] = bytes(modified)
     return expected
 
