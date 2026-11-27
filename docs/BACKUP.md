@@ -41,3 +41,13 @@ python research/scripts/backup.py compare backup-captures/pre_reset_pass1.json b
 - **No factory reset until** independent captures are complete and structurally verified, important settings/operating modes/schedules are documented, unexplained raw differences are resolved or explicitly accepted, and you have a separate manual recovery plan. This tool deliberately has no `reset` or `restore` action.
 
 For technical background see [PROTOCOL.md](PROTOCOL.md), [PARAMETER_MAP.md](PARAMETER_MAP.md), and [SAFETY.md](SAFETY.md).
+
+## Known limitation: GSM/SMS settings
+
+Bench observations on EH-203 firmware 2.15 without a GSM module (2026-11-27):
+
+- ID 95 exposes the device identifier and enable flag via opcode `0x81`. LCD changes are readable, but the tested `0x82` write was rejected (`02 01 02 00 FF 02`).
+- An alarm phone number entered via the LCD survived a power cycle, yet IDs 98 and 99 returned 182 zero bytes each. The phone number's serial representation and access mechanism remain unknown.
+- IDs 96 and 97 returned `FF`; their meaning is not established.
+- GSM/SMS backup and automatic restoration are incomplete. Configure and verify these settings manually using the LCD when needed. Do not interpret zero-filled blocks as proof that no phone numbers are configured.
+- GSM settings remain outside automatic batch restoration. No unvalidated GSM writes are authorized. Behavior with a GSM module installed has not been tested.
