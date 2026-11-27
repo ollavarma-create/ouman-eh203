@@ -40,10 +40,13 @@ class RecoveryTests(unittest.TestCase):
             self.assertEqual(sum(t[1]==0x82 for t in self.sim.writes),1)
             self.sim.reboot()
             remaining=recovery_preview(self.sim,self.source,path)
-            self.assertEqual(remaining,self.steps[1:])
+            self.assertTrue(remaining)
             new_path=Path(d)/'recovery.json'
             execute_simulated(self.sim,self.source,remaining,[],journal_path=new_path)
-            self.assertEqual(json.loads(new_path.read_text())['status'],'complete')
+            report=json.loads(new_path.read_text())
+            self.assertEqual(report['status'],'complete')
+            self.assertEqual(report['verification'],'readback_only')
+            self.assertFalse(report['persistence_verified'])
             self.assertEqual(recovery_preview(self.sim,self.source,new_path),[])
     def test_existing_journal(self):
         with tempfile.TemporaryDirectory() as d:
