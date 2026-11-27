@@ -37,6 +37,31 @@ _add('l1_room_setpoint','Huonelämpötilan asetus','Room temperature setting','H
 _add('l1_room_gain','Huonekompensointisuhde','Room compensation ratio','Huonekomp.s','RoomCompens.',6,[0,7],4,'L1')
 _add('dhw_setpoint','Käyttöveden lämpötila','Domestic hot water temperature','Käyttövesi','DomHot wat.',7,[5,95],58,'LV')
 
+# Curve coordinates: labels are presentation labels, not literal LCD strings.
+for prefix,fi,en in [('l1','L1','H1'),('l2','L2','H2')]:
+    for axis,indices in [('y',range(1,6)),('x',(2,3,4))]:
+        for i in indices:
+            key=f'{prefix}_curve_{axis}{i}'
+            y=axis=='y'
+            _add(key,None,None,None,None,4)
+            PARAMETERS[key].update(
+                label=dict(fi=f'{"Menoveden" if y else "Ulkolämpötilan"} asetus, piste {i}',
+                           en=f'{"Supply water" if y else "Outdoor temperature"} setting, point {i}'),
+                lcd_label=dict(fi=None,en=None),
+                menu_path=dict(fi=[fi,'Säätökäyrien as'],en=[en,'Heating curve']),
+                manual_range=[5,120] if y else None,
+                manual_page=dict(fi=5,en=4),
+                factory_default=None,
+                dependencies=dict(curve_type_key=f'{prefix}_curve_type',
+                                  visible_values=[0] if not y or i in (2,4) else [0,1]),
+                documentation_status='partial')
+    key=f'{prefix}_curve_type'
+    _add(key,'Säätökäyrän tyyppi','Heating curve type','Käyrätyyppi','Curve type',34)
+    PARAMETERS[key].update(access_level='special_service',
+        menu_path=dict(fi=None,en=['Mainten. mode','Special mainten.','Curve type']),
+        factory_default=1, choices={0:dict(fi='5-piste',en='5-point'),1:dict(fi='3-piste',en='3-point')},
+        dependencies=dict(shared_with='l2_curve_type' if prefix=='l1' else 'l1_curve_type'))
+
 def get_metadata(key):
     """Return a detached metadata record; unknown keys raise KeyError."""
     from copy import deepcopy
