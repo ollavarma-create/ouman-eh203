@@ -116,3 +116,7 @@ Dry run `ouman-write-k2wni0jf.json`, write `ouman-write-cx2byrsk.json`, restorat
 ## ID 16 DHW setpoint write experiment — 2026-11-26
 
 Dry run `ouman-write-xo_bodgm.json`, actual write `ouman-write-lt3_h3d1.json`, restoration `ouman-write-gri329gh.json`. U16BE offsets 1–2, scale 0.1°C, 58.0→58.1→58.0°C (0244→0245→0244). Both actual logs report verified; operator confirmed LCD both ways, restoration immediately visible. Restoration independently checked in Python: 10/10 frames pass STX, length, SUM8 and ID echo, write payload and readback match proposed, only offset 2 changes. ACK `02 06 02 00 10 18`. Persistence not separately tested. Raw logs not committed.
+
+## 2026-11-27 read-only payload discoveries
+
+IDs 42, 51 and weekly schedule pairs 4/5 and 6/7 are decoded in [PARAMETER_MAP.md](PARAMETER_MAP.md). LCD experiments do not establish serial write semantics. ESPHome/HA must use 0x81 exclusively. Header variations remain uninterpreted.
