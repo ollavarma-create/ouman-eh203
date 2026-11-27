@@ -3,6 +3,7 @@ from .backup import verify_file, known_fields, atomic_json
 from pathlib import Path
 import json
 import os
+import time
 from .protocol import request, write_frame, decode
 from .transport import exchange
 from .simulator import SimulatedSerial
@@ -74,7 +75,7 @@ def build(source,before,*,persist_curves=False):
         raise ValueError('Unrestored schedule or digital dependency')
     return steps
 
-def _execute(sim,source,steps,log,*,target_identity=None,allow_device_mismatch=False,allow_firmware_mismatch=False,journal_path=None,settle=lambda:None):
+def _execute(sim,source,steps,log,*,target_identity=None,allow_device_mismatch=False,allow_firmware_mismatch=False,journal_path=None,settle=lambda:None, mode_wait=lambda:None, clock=time.monotonic, stable_seconds=0, mode_timeout=60):
     verify_file(source)
     def read():
         return {i:decode(exchange(sim,request(i)),i,len(block(source,i))) for i in IDS}
@@ -119,19 +120,39 @@ def _execute(sim,source,steps,log,*,target_identity=None,allow_device_mismatch=F
         entry['observed']={str(k):v.hex() for k,v in observed.items()}
         save()
         if pid==65 and before[65][0]==1 and expected[65][0]==0:
-            # Only observed intermediate Y coordinates may change during mode conversion.
-            allowed=dict(expected)
-            for j in (65,66):
-                b=bytearray(allowed[j])
-                for k in (2,4):
-                    if not b[k-1]>=observed[j][k]>=b[k+1]:
-                        raise ValueError('Invalid interpolated curve')
-                    b[k]=observed[j][k]
-                allowed[j]=bytes(b)
-            if observed!=allowed:
-                raise ValueError('Unexpected mode transition')
+            # Validate every sample; only intermediate Y coordinates may drift.
+            def validate(sample):
+                allowed=dict(expected)
+                for j in (65,66):
+                    b=bytearray(allowed[j])
+                    for k in (2,4):
+                        if not b[k-1]>=sample[j][k]>=b[k+1]:
+                            raise ValueError('Invalid interpolated curve')
+                        b[k]=sample[j][k]
+                    allowed[j]=bytes(b)
+                if sample!=allowed:
+                    raise ValueError('Unexpected mode transition')
+            started=stable_since=clock()
+            entry['mode_samples']=[]
+            while True:
+                now=clock()
+                entry['mode_samples'].append(dict(elapsed=now-started,
+                    blocks={str(k):v.hex() for k,v in observed.items()}))
+                entry['observed']={str(k):v.hex() for k,v in observed.items()}
+                save()
+                validate(observed)
+                if now-started>=mode_timeout:
+                    raise ValueError('Mode stabilization timeout')
+                if now-stable_since>=stable_seconds:
+                    break
+                mode_wait()
+                sample=read()
+                if sample!=observed:
+                    stable_since=clock()
+                observed=sample
             remaining=build(source,observed,persist_curves=True)
-            if any(p not in {q for q,_,_ in steps[index+1:]} for p,_,_ in remaining):
+            approved=[(p,e[p]) for p,_,e in steps[index+1:]]
+            if [(p,e[p]) for p,_,e in remaining]!=approved:
                 raise ValueError('Mode transition requires new write authorization')
             entry['replanned_ids']=[p for p,_,_ in remaining]
             steps[index+1:]=remaining
@@ -189,4 +210,5 @@ def execute_bench(port,source,current,log,*,journal_path,confirmation,allow_devi
         return _execute(ser,source,steps,log,target_identity=block_identity(current),
                         allow_device_mismatch=allow_device_mismatch,
                         allow_firmware_mismatch=allow_firmware_mismatch,
-                        journal_path=journal_path,settle=lambda:time.sleep(5))
+                        journal_path=journal_path,settle=lambda:time.sleep(5),
+                        mode_wait=lambda:time.sleep(2),stable_seconds=10)
