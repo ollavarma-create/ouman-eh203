@@ -230,3 +230,23 @@ These cover function selection, naming, pulse scaling, monitoring interval, pump
 ## Measurement 6 captures (2026-11-27)
 
 Local JSON basenames: measurement6_l2_room, measurement6_cold_water, measurement6_wind, measurement6_wind_min13, measurement6_wind_max87, measurement6_pressure, measurement6_pressure_range60, measurement6_pressure_upper35, measurement6_pressure_fill13, measurement6_pressure_lower09. All ten independently checked: 128 IDs each, 72 accepted and 56 rejected each, 2560 TX/RX frames, zero STX, length, SUM8, echoed ID or RX/payload mismatches. This is a scoped framing audit, not a semantic or repository-wide audit. Raw files remain local; no new checksum manifest or software test results.
+
+### 2026-11-27 — Bus measurement and stale-value checkpoint (firmware 2.15)
+
+ID17 data offsets are zero-based, excluding the echoed address and ID. Routing code 0x0B (bus) was observed at offset 8 (L2 room), 11 (wind), and 12 (solar); disabling each restored 0x0C. Physical measurement 6 uses 0x05. Disabling measurement 6 restored offset 19 to 0x0C and ID27 to 00 00, but ID54 retained 17 70 (consistent with the previous 6.0 bar reading). Outdoor bus selection was refused as channel already occupied; L1 room, energy and water bus routing remain unverified. Actual LCD menu includes wind and solar separately, not S-compensation. Dig3 remained configured for energy during bus tests (ID43 04 03).
+
+L2 bus without a source produced a room error and ID15 final L2 target rose from 48 to 70 °C; disabling restored 48 °C. Wind bus without a source displayed 96.1 m/s with an alarm; encoding remains unknown. Solar bus selection unexpectedly displayed a network pressure alarm at 6.0 bar despite pressure routing being disabled. After disabling solar and acknowledging, operator confirmed the alarm disappeared; ID54 still retained 17 70. Suspected firmware defect or stale alarm handling, not a proven root cause. Do not treat ID54 alone as live pressure or infer valid bus measurements from routing alone. ID46 timestamp and response header flags are not reliable universal alarm indicators.
+
+Manual Dig3 energy pulses at 1.0 kWh/pulse changed LCD instantaneous power but did not establish a serial power or energy field; IDs60/61 remain unidentified. Continuous pulse scan had missing responses at IDs46,54,59; cause unknown. Defer until controlled pulse generator testing. Across ten checkpoint captures, 2557 present TX/RX frames passed STX, length, SUM8 and ID echo checks; three responses were absent. No serial writes performed. ESPHome remains read-only; portable restore must exclude stale/live measurements and alarm state. Bus routing writes are not validated.
+
+Local capture filenames (not uploaded in this checkpoint):
+- `measurement6_not_connected.json`
+- `energy_pulse_baseline.json`
+- `energy_pulse_10.json`
+- `energy_pulse_10-2.json`
+- `energy_pulse_continuous.json`
+- `bus_baseline.json`
+- `bus_l2_room.json`
+- `bus_wind.json`
+- `bus_solar.json`
+- `bus_solar_restored.json`
