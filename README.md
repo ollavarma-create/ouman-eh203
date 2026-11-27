@@ -44,3 +44,7 @@ ESPHome/Home Assistant will remain read-only (0x81 only). A separate backup/edit
 ## Relay research update
 
 Relay configuration, weekly schedules, commanded states, temporary overrides and burner settings are mapped in the [parameter map](docs/PARAMETER_MAP.md). Relay names and temperature-control hysteresis remain unresolved. All IDs 128–255 were rejected again with burner control active on firmware 2.15. Next: digital inputs. Relay writes remain untested.
+
+### Digital input research checkpoint (2026-11-27)
+
+Digital input function selection, energy/water pulse factors, consumption monitoring interval and pump indication are now mapped for the tested firmware 2.15. Pump alarm acknowledgement and clearance were observed, but active alarm encoding remains unresolved. See [parameter map](docs/PARAMETER_MAP.md) and [research status](docs/RESEARCH_STATUS.md). ESPHome/Home Assistant remains read-only; newly mapped settings are not automatically write-enabled.
