@@ -90,11 +90,34 @@ def block(snapshot, pid):
         raise ValueError('Unexpected block size')
     return raw
 
+def schedule_rows(times, events, pair):
+    if len(times)!=31 or len(events)!=31:
+        raise ValueError('Invalid schedule block length')
+    allowed=(0x10,0x20,0x11,0x21,0x12,0x22) if pair in (4,6) else (0x13,0x23,0x14,0x24)
+    rows=[]
+    for i in range(14):
+        minute=int.from_bytes(times[1+2*i:3+2*i],'big')
+        mask,kind=events[i],events[14+i]
+        if minute>=1440 or mask>127 or kind not in (0,*allowed) or (mask and not kind):
+            raise ValueError('Unsupported schedule slot')
+        if kind or mask or minute:
+            rows.append(dict(slot=i+1,time=f'{minute//60:02}:{minute%60:02}',
+                days=[d for j,d in enumerate(('Ma','Ti','Ke','To','Pe','La','Su')) if mask & (1<<j)],
+                event=f'0x{kind:02X}',mask=mask))
+    return rows
+
 def propose(source, pid, before):
     target = block(source, pid)
     old = before[pid]
     expected = dict(before)
-    if pid in (65,66):
+    if pid in (4,6,8):
+        other=pid+1
+        events=block(source,other)
+        schedule_rows(target,events,pid)
+        schedule_rows(old,before[other],pid)
+        expected[pid]=old[:1]+target[1:29]+old[29:]
+        expected[other]=events[:28]+before[other][28:]
+    elif pid in (65,66):
         if any(before[i][0] != 0 or block(source,i)[0] != 0 for i in (65,66)):
             raise ValueError('Five-point mode required; use validated mode probe first')
         ys = list(target[1:6])
@@ -136,7 +159,7 @@ def live(source, pid, path, port, execute):
     backup.verify_file(source)
     if source.get('profile') or {int(k) for k,v in source['records'].items() if v['status']=='accepted'} != set(backup.QUICK_IDS):
         raise ValueError('Verified full source required')
-    ids = (12,13,14,16,44,47,65,66)
+    ids = (4,5,6,7,8,9,12,13,14,16,44,47,65,66) if pid in (4,6,8) else (12,13,14,16,44,47,65,66)
     record = dict(schema='ouman.eh203.block-restore.v1', source_sha256=source['records_sha256'],
                   id=pid, status='started', created_at=backup.utc(), frames=[])
     with path.open('x') as f:
@@ -177,6 +200,10 @@ def live(source, pid, path, port, execute):
                 if a!=b:
                     changes.append(dict(name=name,id=i,offset=offset,current=str(Decimal(a)*Decimal(factor)),
                                         target=str(Decimal(b)*Decimal(factor)),unit=unit))
+            if pid in (4,6,8):
+                record['schedule_before']=schedule_rows(before[pid],before[pid+1],pid)
+                record['schedule_target']=schedule_rows(expected[pid],expected[pid+1],pid)
+                print(json.dumps(record['schedule_target'],ensure_ascii=False,indent=2))
             record['changes']=changes
             record['status']='preview'
             save()
@@ -195,12 +222,22 @@ def live(source, pid, path, port, execute):
                 raise ValueError('Blocks changed since preview')
             record['status']='write_outcome_unknown'
             save()
-            ack=exchange(frame(0x82,pid,expected[pid]))
-            time.sleep(1)
+            intermediate=dict(before)
+            for i in ((pid,pid+1) if pid in (4,6,8) else (pid,)):
+                if intermediate[i]==expected[i]:
+                    continue
+                ack=exchange(frame(0x82,i,expected[i]))
+                time.sleep(1)
+                decode(ack,i,0)
+                intermediate[i]=expected[i]
+                after=read()
+                record['after']={k:v.hex(' ') for k,v in after.items()}
+                save()
+                if pid in (4,6,8) and after!=intermediate:
+                    raise ValueError('Unexpected intermediate schedule readback; stop without retry')
             after=read()
             record['after']={i:v.hex(' ') for i,v in after.items()}
             save()
-            decode(ack,pid,0)
             if after!=expected:
                 raise ValueError('Unexpected readback; stop without retry')
             record['status']='verified_pending_final_reboot'
@@ -220,7 +257,7 @@ def main(argv=None):
     m.add_argument('--dry-run',action='store_true')
     m.add_argument('--live-preview',action='store_true')
     m.add_argument('--execute-bench',action='store_true')
-    p.add_argument('--block',type=int,choices=(12,13,14,16,44,47,65,66))
+    p.add_argument('--block',type=int,choices=(4,6,8,12,13,14,16,44,47,65,66))
     p.add_argument('--all',action='store_true')
     p.add_argument('--port',default='/dev/ttyUSB0')
     p.add_argument('--source',type=Path,required=True)
