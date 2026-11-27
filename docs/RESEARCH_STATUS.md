@@ -195,3 +195,7 @@ Next: digital input configuration, then remaining LCD menus and selective bench 
 ## Digital input checkpoint — 2026-11-27
 
 All seven observed digital input function codes mapped in ID43; pulse factors in ID44 and consumption monitoring interval and pump indication in ID47. UI exclusivity observed for home/away. Renaming Dig1 did not expose a corresponding payload change in the tested sweep. Polarity menu was unavailable on the bench configuration; GSM dependency is unverified. Pump alarm lifecycle tested through LCD acknowledgement and clearance. Header bit 2 is response-specific and cannot be treated as an active alarm flag; ID46 timestamp persisted after clearance. See PARAMETER_MAP.md. Next: measurement 6 and pressure measurement configuration. Physical contact and pulse-counter tests remain open. No new serial writes tested.
+
+## Measurement 6 checkpoint — 2026-11-27
+
+Four active measurement selections mapped in ID17; wind signal min/max duplicated in IDs12/14; four pressure settings individually confirmed in ID47. ID27 pressure scaling observed, ID54 candidate higher-resolution pressure reading; sequential scans suggest but do not prove different filtering. Disconnected input can report full-scale pressure. Names, disabled selection, physical calibration and wind scaling remain open. All ten measurement6 captures independently audited: 128 IDs each, 72 accepted each, 2560 TX/RX frames, zero STX/length/SUM8/ID/payload mismatches. No serial writes or software tests performed. Next: disabled selection, energy/pulse counters and remaining menus.
