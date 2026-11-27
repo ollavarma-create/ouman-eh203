@@ -25,7 +25,7 @@ class MetadataTests(unittest.TestCase):
             if entry['documentation_status']=='partial':
                 for lang in ('fi','en'):
                     self.assertTrue(entry['label'][lang])
-                    if '_curve_' not in entry['key']:
+                    if not any(x in entry['key'] for x in ('_curve_', '_actuator_time', '_motor_type')):
                         self.assertTrue(entry['lcd_label'][lang])
                     self.assertTrue(entry['manual_page'][lang])
 
@@ -47,3 +47,15 @@ class MetadataTests(unittest.TestCase):
     def test_curve_default_not_example(self):
         self.assertIsNone(get_metadata('l1_curve_y1')['factory_default'])
         self.assertEqual(get_metadata('l1_curve_type')['factory_default'],1)
+
+    def test_pid_defaults(self):
+        for prefix,p,i in [('l1',140,50),('l2',140,50),('dhw',70,18)]:
+            self.assertEqual(get_metadata(prefix+'_p_band')['factory_default'],p)
+            self.assertEqual(get_metadata(prefix+'_i_time')['factory_default'],i)
+            self.assertEqual(get_metadata(prefix+'_d_time')['manual_range'],[0,10])
+            self.assertEqual(get_metadata(prefix+'_p_band')['access_level'],'service')
+
+    def test_motor_choices(self):
+        for prefix in ('l1','l2'):
+            self.assertEqual(set(get_metadata(prefix+'_motor_type')['choices']),{0,1,2})
+            self.assertEqual(get_metadata(prefix+'_actuator_time')['factory_default'],150)
