@@ -37,6 +37,8 @@ class RestoreTests(unittest.TestCase):
         log=[]
         execute_simulated(sim,original,plan(original,factory),log)
         self.assertIn('replanned_ids',log[0])
+        self.assertEqual([e['id'] for e in log[:3]],[65,65,66])
+        sim.reboot()
         self.assertEqual(build(original,{i:sim.blocks[i] for i in IDS}),[])
 
     def test_unexpected_mode_side_effect_stops(self):
@@ -52,3 +54,15 @@ class RestoreTests(unittest.TestCase):
             execute_simulated(sim,original,plan(original,factory),log,settle=settle)
         self.assertEqual(sum(t[1]==0x82 for t in sim.writes),1)
         self.assertIn('observed',log[0])
+
+    def test_interpolation_is_volatile_until_explicit_write(self):
+        original,factory=[json.loads((ROOT/n).read_text()) for n in ('pre_reset_pass1.json','factory_reset_pass1.json')]
+        sim=SimulatedSerial.from_backups(original,factory)
+        sim.factory_reset()
+        sim.recalculate_curves=True
+        old=sim.blocks[66][2]
+        self.assertTrue(sim.apply(65,bytes(1)+sim.blocks[65][1:]))
+        self.assertNotEqual(sim.blocks[66][2],old)
+        sim.reboot()
+        self.assertEqual(sim.blocks[66][2],old)
+        self.assertEqual(sim.blocks[66][0],0)
