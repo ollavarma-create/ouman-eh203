@@ -120,3 +120,7 @@ Dry run `ouman-write-xo_bodgm.json`, actual write `ouman-write-lt3_h3d1.json`, r
 ## 2026-11-27 read-only payload discoveries
 
 IDs 42, 51 and weekly schedule pairs 4/5 and 6/7 are decoded in [PARAMETER_MAP.md](PARAMETER_MAP.md). LCD experiments do not establish serial write semantics. ESPHome/HA must use 0x81 exclusively. Header variations remain uninterpreted.
+
+## Relay read-only discoveries
+
+IDs 8/9, 14, 44, 45, 58 and 59 are documented in [PARAMETER_MAP.md](PARAMETER_MAP.md). With burner control active, all IDs 128–255 returned the valid rejection frame `02 01 02 00 FF 02`. This does not establish behavior on other firmware or commands. No relay serial writes tested.
