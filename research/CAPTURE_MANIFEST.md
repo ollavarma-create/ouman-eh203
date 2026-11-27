@@ -226,3 +226,7 @@ Local research filenames reported during the session (raw files not committed he
 - `dig1_pump_alarm_cleared.json`
 
 These cover function selection, naming, pulse scaling, monitoring interval, pump indication and alarm lifecycle. See parameter map for interpretation and limitations.
+
+## Measurement 6 captures (2026-11-27)
+
+Local JSON basenames: measurement6_l2_room, measurement6_cold_water, measurement6_wind, measurement6_wind_min13, measurement6_wind_max87, measurement6_pressure, measurement6_pressure_range60, measurement6_pressure_upper35, measurement6_pressure_fill13, measurement6_pressure_lower09. All ten independently checked: 128 IDs each, 72 accepted and 56 rejected each, 2560 TX/RX frames, zero STX, length, SUM8, echoed ID or RX/payload mismatches. This is a scoped framing audit, not a semantic or repository-wide audit. Raw files remain local; no new checksum manifest or software test results.
