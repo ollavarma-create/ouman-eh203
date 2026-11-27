@@ -159,7 +159,35 @@ Bench firmware 2.15, LCD changes followed by read-only sweeps. Data offsets excl
 - ID 42 (0x2A), two data bytes: offset 1 low nibble L1, high nibble L2. Codes 0 automatic, 1 continuous day, 2 continuous night, 3 shutdown, 4 mechanical manual, 5 electrical manual. All six modes observed for both circuits. Mixed L1 day/L2 night returned 00 21; all automatic 00 00. Offset 0 low nibble DHW (LV): 0 automatic, 4 mechanical manual, 5 electrical manual observed; other codes and high nibble unknown. No serial mode writes tested.
 - ID 51 (0x33), offset 0 U8, LCD DHW command percent, scale 1:1: manual LCD 100/50/26/0 matched hex 64/32/1A/00; automatic restored returned 0F (15%). LCD steps need not be uniform. Not measured physical valve feedback. IDs 49/50 remain candidates. ID 15 offset 26 tracked L2 shutdown 48→14→48°C, strong final-target candidate, not independently LCD verified.
 - Weekly schedules share a table across L1/L2. Confirmed block pairs IDs 4/5 and 6/7, each 31 data bytes per ID. Even ID: 14 U16BE minute-of-day values at offsets 1+2*i (i=0..13); offsets 0,29,30 unknown. Odd ID: weekday masks offsets 0..13, event types offsets 14..27, offsets 28..30 unknown. Event codes hex 10 L1 reduction ON, 20 L1 OFF, 11 L2 ON, 21 L2 OFF. High/low nibble interpretation supported for these codes only. Expected weekday bits Mon..Sun = 0..6; observed masks 17,2E,40,7F,1F,60,01 support this mapping, but not every individual bit independently isolated.
-- ON and OFF may have different weekday masks and times. Zero time is valid midnight, not a deletion marker. A single event with zero weekday mask retained its type; clearing the paired event's weekdays removed both and compacted the table across block boundaries. 16 events observed before deletion, 14 after, IDs 6/7 then zero. Last two times 11:50 and 11:54 moved to slots 13/14. Slot order may change on LCD edits; preserve order and raw bytes in backups. IDs 8–11 possible continuation, not proven; total capacity unknown. No LV schedule available on tested LCD. Relay schedules next; no schedule serial writes tested.
+- ON and OFF may have different weekday masks and times. Zero time is valid midnight, not a deletion marker. A single event with zero weekday mask retained its type; clearing the paired event's weekdays removed both and compacted the table across block boundaries. 16 events observed before deletion, 14 after, IDs 6/7 then zero. Last two times 11:50 and 11:54 moved to slots 13/14. Slot order may change on LCD edits; preserve order and raw bytes in backups. IDs 8/9 subsequently identified as a separate relay schedule table; IDs 10/11 remain unverified; total capacity unknown. No LV schedule available on tested LCD. Relay schedules mapped below; no schedule serial writes tested.
 - ESPHome/Home Assistant is permanently read-only (0x81 only); separate offline backup/editor and bench-only restore tooling. Raw snapshots are not transferable settings. Exclude live commands, identity, unknown fields and mirrors from restore. Only independently write-tested fields may be restored with explicit approval, target snapshot, journal and readback. No automatic retries or blind rollback.
 
-Next: relay schedules, remaining LCD menus, then raw backup and selective editor. Preserve the existing narrow writer allowlist.
+Next: digital inputs, remaining LCD menus, then raw backup and selective editor. Preserve the existing narrow writer allowlist.
+
+## 2026-11-27 — relay experiments (firmware 2.15)
+
+Offsets exclude echoed 00 ID. LCD changes followed by read-only scans; no relay serial writes tested.
+
+| ID | Offset | Encoding | Observed meaning |
+|---|---:|---|---|
+| 44 | 9 | U8 enum | R2 configuration |
+| 44 | 10 | U8 enum | R1 configuration |
+| 44 | 15 | S8 °C | R1 outdoor threshold, −15→−7 (F1→F9) |
+| 44 | 27 | U8 °C | R1 temperature threshold, 55→63 |
+| 14 | 25 | U8 °C | R1 burner ON threshold, 70→83 |
+| 14 | 26 | U8 °C | R1 burner hysteresis, 5→9 |
+| 45 | 1 | bit 3 / bit 4 | R1 / R2 commanded state, not contact feedback |
+| 58 | 2–3 | U16BE | R1 override mode (high nibble), remaining minutes (low 12 bits) |
+| 59 | 2–3 | U16BE | R2 override, same layout observed for modes 0 and 3 |
+
+Configuration codes (hex): 00 unused (R2 confirmed), 01 weekly time control (both), 04 coupled 230 V motor control (both), 06 time/outdoor control (R1), 07 temperature control (R1), 08 burner control (R1). Pump mode remains unmapped. Selecting motor control requires releasing R2; leaving motor control for R1 temperature control automatically releases R2 (04/04→00/07 in offsets 9/10). Preserve inactive stored settings; do not treat these coupled configuration fields as independent writes.
+
+Override modes: 0 schedule, 1 continuous ON, 2 continuous OFF, 3 timer ON, 4 timer OFF (all observed for R1; only 0 and 3 independently observed for R2). 600 minutes encoded as 32 58 in offsets 2–3 of both IDs. Short timers already decrement during scanning. LCD limit 999 minutes. Offsets 0–1 unknown. Overrides/countdowns and commanded state are live data, not portable settings.
+
+Relay weekly schedules use separate shared ID 8/9 table with the same 14-slot layout as 4/5. R1 event types 13/23 hex (ON/OFF), R2 14/24. R1 13:17 Mon/Wed/Fri and 15:43 Tue/Thu/Sat; R2 14:25 Mon and 16:35 Fri. ID 10/11 continuation remains unverified. Schedules retained when relay configuration changed. No serial schedule writes tested.
+
+R1 renamed TEST12345 on LCD, but no corresponding payload change found. R1 temperature-control hysteresis 3→7 persisted on LCD but no corresponding payload change found. Neither mapping is established; do not silently claim complete backup coverage. Burner hysteresis is a separate confirmed field. ID 44 offset 28 is not established as temperature hysteresis.
+
+Extended scan with burner control active: all 128 IDs 128–255 returned 02 01 02 00 FF 02, consistent with previous day's scan. No new readable IDs in this configuration. Scope is firmware 2.15 and tested configurations, not all firmware or commands. Continue ordinary research scans 0–127; retain optional full 0–255 raw snapshot for compatibility research.
+
+Next: digital input configuration, then remaining LCD menus and selective bench restore. Keep relay loads disconnected and existing writer allowlist unchanged.
