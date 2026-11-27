@@ -25,8 +25,7 @@ class MetadataTests(unittest.TestCase):
             if entry['documentation_status']=='partial':
                 for lang in ('fi','en'):
                     self.assertTrue(entry['label'][lang])
-                    if not any(x in entry['key'] for x in ('_curve_', '_actuator_time', '_motor_type', '_outdoor_delay')) and entry['key'] not in ('dhw_high_alarm','dhw_boost','r1_outdoor_threshold'):
-                        self.assertTrue(entry['lcd_label'][lang])
+                    self.assertIn(lang, entry['lcd_label'])
                     self.assertTrue(entry['manual_page'][lang])
 
     def test_detached_record(self):
@@ -70,3 +69,17 @@ class MetadataTests(unittest.TestCase):
     def test_manual_conflicts_preserved(self):
         self.assertIn('manual_default_conflict',get_metadata('dhw_high_alarm')['dependencies'])
         self.assertIn('manual_label_conflict',get_metadata('r1_outdoor_threshold')['dependencies'])
+
+    def test_all_fields_reviewed(self):
+        self.assertEqual(len(PARAMETERS),82)
+        self.assertFalse(any(e['documentation_status']=='pending' for e in PARAMETERS.values()))
+        self.assertEqual(get_metadata('valve_center_close')['documentation_status'],'unresolved')
+
+    def test_pressure_defaults(self):
+        self.assertIsNone(get_metadata('pressure_range')['factory_default'])
+        self.assertEqual([get_metadata('pressure_'+k+'_alarm')['factory_default']
+                          for k in ('upper','filling','lower')],[2.2,0.7,0.5])
+
+    def test_consumption_alarm(self):
+        self.assertEqual(get_metadata('consumption_alarm_interval')['manual_range'],[0,99])
+        self.assertEqual(get_metadata('consumption_alarm_interval')['factory_default'],0)
