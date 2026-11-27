@@ -201,3 +201,7 @@ Read-only raw snapshot of IDs 0–255 is feasible now. A portable configuration 
 ## 2026-11-27 LCD experiments (IDs 0–127)
 
 Capture basenames (JSON, local originals; not committed): baseline_01, baseline_02, l1_continuous_day, l1_auto_restored, l1_continuous_night, l1_down, l1_hand_mech, l1_hand_elec, l2_continuous_day, l2_continuous_night, l2_down, l2_hand_mech, l2_hand_elec, l1_day_l2_night, all_auto_restored, lv_hand_mech, lv_hand_elec, lv_hand_elec_50, lv_hand_elec_26, lv_hand_elec_min, lv_auto_restored, l1_schedule_mon, l1_schedule_multi, l1_schedule_daymask, l2_schedule, schedule_capacity, schedule_delete, schedule_pair_delete. See parameter map and research status for observations. A fresh aggregate audit is pending; no new test-suite result claimed.
+
+## 2026-11-27 relay captures
+
+Local JSON basenames: r1_timer_enabled, r1_renamed, r1_schedule, r1_continuous_on, r1_continuous_off, r1_timer_on_4m, r1_timer_off_7m, r1_timer_on_600m, r2_timer_on_600m, r2_schedule, r1_outdoor_control, r1_outdoor_minus7, r1_motor_control, r1_temperature_control, r1_temperature_63, r1_temperature_hysteresis7, r1_burner_control, r1_burner_83, r1_burner_hysteresis9 (IDs 0–127); r1_burner_extended (IDs 128–255, all rejected). See parameter map for observations. Raw files remain local; no new aggregate audit claimed.
