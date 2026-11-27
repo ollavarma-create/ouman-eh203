@@ -66,3 +66,37 @@ class RestoreTests(unittest.TestCase):
         sim.reboot()
         self.assertEqual(sim.blocks[66][2],old)
         self.assertEqual(sim.blocks[66][0],0)
+
+    def test_delayed_l1_stabilization(self):
+        original,factory=[json.loads((ROOT/n).read_text()) for n in ('pre_reset_pass1.json','factory_reset_pass1.json')]
+        sim=SimulatedSerial.from_backups(original,factory)
+        sim.factory_reset()
+        sim.recalculate_curves=True
+        sim.defer_l1=True
+        ticks=[0]
+        def wait():
+            ticks[0]+=2
+            if ticks[0]==6:
+                sim.finish_l1()
+        log=[]
+        execute_simulated(sim,original,plan(original,factory),log,
+                          mode_wait=wait,clock=lambda:ticks[0],stable_seconds=10)
+        self.assertEqual(ticks[0],16)
+        self.assertEqual([e['id'] for e in log[:3]],[65,65,66])
+        sim.reboot()
+        self.assertEqual(build(original,{i:sim.blocks[i] for i in IDS}),[])
+
+    def test_stabilization_timeout(self):
+        original,factory=[json.loads((ROOT/n).read_text()) for n in ('pre_reset_pass1.json','factory_reset_pass1.json')]
+        sim=SimulatedSerial.from_backups(original,factory)
+        sim.factory_reset()
+        ticks=[0]
+        def wait():
+            ticks[0]+=2
+            b=bytearray(sim.blocks[65])
+            b[2]=49 if b[2]==50 else 50
+            sim.blocks[65]=bytes(b)
+        with self.assertRaisesRegex(ValueError,'Mode stabilization timeout'):
+            execute_simulated(sim,original,plan(original,factory),[],
+                              mode_wait=wait,clock=lambda:ticks[0],stable_seconds=10,mode_timeout=12)
+        self.assertEqual(sum(t[1]==0x82 for t in sim.writes),1)
