@@ -43,12 +43,12 @@ def plan(source,current,*,allow_device_mismatch=False,allow_firmware_mismatch=Fa
 def block_identity(s):
     return bytes.fromhex(s['records']['1']['data'])[:9]
 
-def build(source,before):
+def build(source,before,*,persist_curves=False):
     state=dict(before)
     steps=[]
-    def add(pid,expected):
+    def add(pid,expected,force=False):
         nonlocal state
-        if expected!=state:
+        if expected!=state or force:
             steps.append((pid,dict(state),dict(expected)))
             state=dict(expected)
     if state[65][0]==state[66][0]==1 and block(source,65)[0]==block(source,66)[0]==0:
@@ -56,6 +56,7 @@ def build(source,before):
         for i in (65,66):
             expected[i]=bytes(1)+state[i][1:]
         add(65,expected)
+        persist_curves=True
     for pid in ORDER:
         expected=propose(source,pid,state)
         if pid in (4,6,8):
@@ -64,7 +65,7 @@ def build(source,before):
             add(pid,intermediate)
             add(pid+1,expected)
         else:
-            add(pid,expected)
+            add(pid,expected,force=persist_curves and pid in (65,66))
     desired={i:block(source,i) for i in IDS}
     for name,i,offset,width,*_ in __import__('ouman_eh203.registry',fromlist=['FIELDS']).FIELDS:
         if state[i][offset:offset+width]!=desired[i][offset:offset+width]:
@@ -87,7 +88,7 @@ def _execute(sim,source,steps,log,*,target_identity=None,allow_device_mismatch=F
     if journal_path is not None:
         journal_path=Path(journal_path)
         journal=dict(schema='ouman.eh203.restore-journal.v1',source_sha256=source['records_sha256'],
-                     target_identity=actual.hex(),status='running',entries=[])
+                     target_identity=actual.hex(),status='running',persistence_verified=False,entries=[])
         with journal_path.open('x') as f:
             json.dump(journal,f)
             f.flush()
@@ -129,7 +130,7 @@ def _execute(sim,source,steps,log,*,target_identity=None,allow_device_mismatch=F
                 allowed[j]=bytes(b)
             if observed!=allowed:
                 raise ValueError('Unexpected mode transition')
-            remaining=build(source,observed)
+            remaining=build(source,observed,persist_curves=True)
             if any(p not in {q for q,_,_ in steps[index+1:]} for p,_,_ in remaining):
                 raise ValueError('Mode transition requires new write authorization')
             entry['replanned_ids']=[p for p,_,_ in remaining]
@@ -150,6 +151,7 @@ def _execute(sim,source,steps,log,*,target_identity=None,allow_device_mismatch=F
         raise ValueError('Final state still requires restore')
     if journal is not None:
         journal['status']='complete'
+        journal['verification']='readback_only'
         save()
     return result
 
