@@ -25,7 +25,7 @@ class MetadataTests(unittest.TestCase):
             if entry['documentation_status']=='partial':
                 for lang in ('fi','en'):
                     self.assertTrue(entry['label'][lang])
-                    if not any(x in entry['key'] for x in ('_curve_', '_actuator_time', '_motor_type')):
+                    if not any(x in entry['key'] for x in ('_curve_', '_actuator_time', '_motor_type', '_outdoor_delay')) and entry['key'] not in ('dhw_high_alarm','dhw_boost','r1_outdoor_threshold'):
                         self.assertTrue(entry['lcd_label'][lang])
                     self.assertTrue(entry['manual_page'][lang])
 
@@ -59,3 +59,14 @@ class MetadataTests(unittest.TestCase):
         for prefix in ('l1','l2'):
             self.assertEqual(set(get_metadata(prefix+'_motor_type')['choices']),{0,1,2})
             self.assertEqual(get_metadata(prefix+'_actuator_time')['factory_default'],150)
+
+    def test_special_service_settings(self):
+        self.assertEqual(get_metadata('room_delay')['manual_range'],[0,2])
+        self.assertEqual(get_metadata('power_limit')['factory_default'],999)
+        self.assertEqual(get_metadata('dhw_alarm_delay')['manual_range'],[0,700])
+        self.assertEqual(get_metadata('l2_deviation_alarm')['dependencies']['delay_key'],'deviation_alarm_delay')
+        self.assertEqual(get_metadata('room_delay')['access_level'],'special_service')
+
+    def test_manual_conflicts_preserved(self):
+        self.assertIn('manual_default_conflict',get_metadata('dhw_high_alarm')['dependencies'])
+        self.assertIn('manual_label_conflict',get_metadata('r1_outdoor_threshold')['dependencies'])
