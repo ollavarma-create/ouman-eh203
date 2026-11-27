@@ -86,7 +86,7 @@ BOUNDS.update(r1_config=(0,8),r2_config=(0,4),
 # ID47 is short; use the verified source length, not a 31-byte assumption.
 def block(snapshot, pid):
     raw = bytes.fromhex(snapshot['records'][str(pid)]['data'])
-    if (pid != 47 and len(raw) != 31) or (pid == 47 and not 7 <= len(raw) <= 31):
+    if (pid == 43 and len(raw)!=2) or (pid not in (43,47) and len(raw)!=31) or (pid == 47 and not 7 <= len(raw) <= 31):
         raise ValueError('Unexpected block size')
     return raw
 
@@ -106,6 +106,15 @@ def schedule_rows(times, events, pair):
                 event=f'0x{kind:02X}',mask=mask))
     return rows
 
+def schedule_key(times, events, pair):
+    # Preserve duplicates and inactive nonempty slots; ignore slot order only.
+    return sorted((r['time'],r['mask'],r['event']) for r in schedule_rows(times,events,pair))
+
+def schedule_equal(a,b,pid):
+    return (a[pid][:1]==b[pid][:1] and a[pid][29:]==b[pid][29:]
+        and a[pid+1][28:]==b[pid+1][28:]
+        and schedule_key(a[pid],a[pid+1],pid)==schedule_key(b[pid],b[pid+1],pid))
+
 def propose(source, pid, before):
     target = block(source, pid)
     old = before[pid]
@@ -117,6 +126,26 @@ def propose(source, pid, before):
         schedule_rows(old,before[other],pid)
         expected[pid]=old[:1]+target[1:29]+old[29:]
         expected[other]=events[:28]+before[other][28:]
+        if schedule_equal(before,expected,pid):
+            return dict(before)
+    elif pid == 43:
+        codes=(target[1]&15,target[1]>>4,target[0]&15)
+        if any(c>6 for c in codes) or codes.count(2)>1:
+            raise ValueError('Unsupported digital input assignment')
+        expected[pid]=bytes(((old[0]&0xf0)|codes[2],target[1]))
+    elif pid == 17:
+        # Only individually observed routing slots and codes. Never copy unknown bytes.
+        modified=bytearray(old)
+        for offset in (8,9,11,12,19):
+            if old[offset]==target[offset]:
+                continue
+            allowed={5,12} if offset in (9,19) else {5,11,12} if offset in (8,11) else {11,12}
+            if old[offset] not in allowed or target[offset] not in allowed:
+                raise ValueError('Unverified routing transition')
+            modified[offset]=target[offset]
+        if any(modified.count(c)>1 for c in (5,11)):
+            raise ValueError('Potential duplicate routing; manual review required')
+        expected[pid]=bytes(modified)
     elif pid in (65,66):
         if any(before[i][0] != 0 or block(source,i)[0] != 0 for i in (65,66)):
             raise ValueError('Five-point mode required; use validated mode probe first')
@@ -159,7 +188,7 @@ def live(source, pid, path, port, execute):
     backup.verify_file(source)
     if source.get('profile') or {int(k) for k,v in source['records'].items() if v['status']=='accepted'} != set(backup.QUICK_IDS):
         raise ValueError('Verified full source required')
-    ids = (4,5,6,7,8,9,12,13,14,16,44,47,65,66) if pid in (4,6,8) else (12,13,14,16,44,47,65,66)
+    ids = (4,5,6,7,8,9,12,13,14,16,44,47,65,66) if pid in (4,6,8) else (12,13,14,16,17,43,44,47,65,66)
     record = dict(schema='ouman.eh203.block-restore.v1', source_sha256=source['records_sha256'],
                   id=pid, status='started', created_at=backup.utc(), frames=[])
     with path.open('x') as f:
@@ -204,6 +233,9 @@ def live(source, pid, path, port, execute):
                 record['schedule_before']=schedule_rows(before[pid],before[pid+1],pid)
                 record['schedule_target']=schedule_rows(expected[pid],expected[pid+1],pid)
                 print(json.dumps(record['schedule_target'],ensure_ascii=False,indent=2))
+            if pid in (17,43):
+                record['routing_changes']=[dict(offset=j,current=a,target=b) for j,(a,b) in enumerate(zip(before[pid],expected[pid])) if a!=b]
+                print(json.dumps(record['routing_changes'],indent=2))
             record['changes']=changes
             record['status']='preview'
             save()
@@ -215,6 +247,8 @@ def live(source, pid, path, port, execute):
                 return 0
             if not execute:
                 return 0
+            if pid == 17:
+                raise ValueError('Routing writes blocked pending full dependency mapping')
             if input('Isolated bench, no connected loads. Type BENCH: ')!='BENCH':
                 record['status']='cancelled'
                 return 1
@@ -233,13 +267,14 @@ def live(source, pid, path, port, execute):
                 after=read()
                 record['after']={k:v.hex(' ') for k,v in after.items()}
                 save()
-                if pid in (4,6,8) and after!=intermediate:
+                if pid in (4,6,8) and after!=intermediate and not (i==pid+1 and schedule_equal(after,intermediate,pid) and all(after[j]==intermediate[j] for j in ids if j not in (pid,pid+1))):
                     raise ValueError('Unexpected intermediate schedule readback; stop without retry')
             after=read()
             record['after']={i:v.hex(' ') for i,v in after.items()}
             save()
             if after!=expected:
-                raise ValueError('Unexpected readback; stop without retry')
+                if pid not in (4,6,8) or not schedule_equal(after,expected,pid) or any(after[i]!=expected[i] for i in ids if i not in (pid,pid+1)):
+                    raise ValueError('Unexpected readback; stop without retry')
             record['status']='verified_pending_final_reboot'
             return 0
     except (Exception,KeyboardInterrupt) as exc:
@@ -257,7 +292,7 @@ def main(argv=None):
     m.add_argument('--dry-run',action='store_true')
     m.add_argument('--live-preview',action='store_true')
     m.add_argument('--execute-bench',action='store_true')
-    p.add_argument('--block',type=int,choices=(4,6,8,12,13,14,16,44,47,65,66))
+    p.add_argument('--block',type=int,choices=(4,6,8,12,13,14,16,17,43,44,47,65,66))
     p.add_argument('--all',action='store_true')
     p.add_argument('--port',default='/dev/ttyUSB0')
     p.add_argument('--source',type=Path,required=True)
@@ -272,7 +307,7 @@ def main(argv=None):
                 raise ValueError('Live mode requires exactly one of --block or --all, and no --current')
             source=backup.load(args.source)
             if args.all:
-                ids=(65,66,12,13,14,16,44,47)
+                ids=(65,66,12,13,14,16,44,47,4,6,8)
                 paths=[args.output.with_name(args.output.stem+'_id'+str(i)+'.json') for i in ids]
                 if any(p.exists() for p in paths):
                     raise FileExistsError('Batch log already exists')
