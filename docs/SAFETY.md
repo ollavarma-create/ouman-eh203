@@ -20,3 +20,7 @@ Read-only raw snapshot of IDs 0–255 is feasible now. A portable configuration 
 ## Integration separation (2026-11-27)
 
 ESPHome/Home Assistant must remain strictly read-only, with no write service or command 0x82. Manual actuator experiments require disconnected loads on the bench. ID 51 is a command, not physical feedback. Schedule and operating-mode serial writes are unvalidated and excluded from restore. Stop on mismatch or uncertain state; do not automatically retry or roll back.
+
+## Relay-specific boundaries
+
+Keep relay loads disconnected during bench experiments. Relay configuration can be coupled (230 V motor mode reserves both relays); do not independently replay configuration bytes. Exclude live overrides, countdowns and commanded states from portable backup/restore. Weekly schedules and persistent relay settings are read-mapped only, not write-validated. Relay names and temperature-control hysteresis are not yet readable through the mapped interface. Do not claim a complete portable backup.
