@@ -96,6 +96,7 @@ def _execute(sim,source,steps,log,*,target_identity=None,allow_device_mismatch=F
     def save():
         if journal is not None:
             atomic_json(journal_path,journal)
+    steps=[(p,dict(b),dict(e)) for p,b,e in steps]
     for index,(pid,before,expected) in enumerate(steps):
         if decode(exchange(sim,request(1)),1,len(bytes.fromhex(source['records']['1']['data'])))[:9]!=actual:
             raise ValueError('Target identity changed')
@@ -114,7 +115,26 @@ def _execute(sim,source,steps,log,*,target_identity=None,allow_device_mismatch=F
         decode(rx,pid,0)
         settle()
         observed=read()
-        if observed!=expected:
+        entry['observed']={str(k):v.hex() for k,v in observed.items()}
+        save()
+        if pid==65 and before[65][0]==1 and expected[65][0]==0:
+            # Only observed intermediate Y coordinates may change during mode conversion.
+            allowed=dict(expected)
+            for j in (65,66):
+                b=bytearray(allowed[j])
+                for k in (2,4):
+                    if not b[k-1]>=observed[j][k]>=b[k+1]:
+                        raise ValueError('Invalid interpolated curve')
+                    b[k]=observed[j][k]
+                allowed[j]=bytes(b)
+            if observed!=allowed:
+                raise ValueError('Unexpected mode transition')
+            remaining=build(source,observed)
+            if any(p not in {q for q,_,_ in steps[index+1:]} for p,_,_ in remaining):
+                raise ValueError('Mode transition requires new write authorization')
+            entry['replanned_ids']=[p for p,_,_ in remaining]
+            steps[index+1:]=remaining
+        elif observed!=expected:
             # Only accept a completed shared schedule pair, with no pending shared writes.
             if pid!=7 or any(p in (4,5,6,7) for p,_,_ in steps[index+1:]) or not equivalent_readback(observed,expected):
                 raise ValueError('Unexpected readback')
@@ -167,4 +187,4 @@ def execute_bench(port,source,current,log,*,journal_path,confirmation,allow_devi
         return _execute(ser,source,steps,log,target_identity=block_identity(current),
                         allow_device_mismatch=allow_device_mismatch,
                         allow_firmware_mismatch=allow_firmware_mismatch,
-                        journal_path=journal_path,settle=lambda:time.sleep(1))
+                        journal_path=journal_path,settle=lambda:time.sleep(5))
