@@ -37,7 +37,7 @@ class FakeSerial:
             data = bytearray(31)
             data[7] = 50
             payload = bytes((0, pid)) + data
-        elif pid in (13, 14, 16, 65, 66):
+        elif pid in (13, 14, 16, 44, 47, 65, 66):
             payload = bytes((0, pid)) + bytes(31)
         else:
             payload = b'\x00\xff'
@@ -69,6 +69,7 @@ class BackupTests(unittest.TestCase):
             self.assertTrue(verify_file(a))
             self.assertTrue(verify_file(b))
             self.assertEqual(len(a['records']), 256)
+            self.assertEqual(len(known_fields(a)['fields']), 82)
             self.assertEqual(known_fields(a)['fields']['l1_room_gain']['value'], '5.0')
             self.assertEqual(compare(a, b)['status'], 'exact_payload_match')
 
