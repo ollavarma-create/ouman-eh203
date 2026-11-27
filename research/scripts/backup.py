@@ -48,6 +48,47 @@ FIELDS = [
     ('l1_curve_type', 65, 0, 1, False, '1', 'enum'),
     ('l2_curve_type', 66, 0, 1, False, '1', 'enum'),
 ]
+FIELDS += [
+    ('l1_mv_min_0', 12, 8, 1, False, '1', '°C'),
+    ('l1_mv_min_minus20', 12, 9, 1, False, '1', '°C'),
+    ('l1_return_min_0', 12, 10, 1, False, '1', '°C'),
+    ('l1_return_min_minus20', 12, 11, 1, False, '1', '°C'),
+    ('l1_return_max', 12, 12, 1, False, '1', '°C'),
+    ('l1_autumn_drying', 12, 14, 1, False, '1', '°C'),
+    ('l1_deviation_alarm', 12, 26, 1, False, '1', '°C'),
+    ('l2_mv_min_0', 14, 7, 1, False, '1', '°C'),
+    ('l2_mv_min_minus20', 14, 8, 1, False, '1', '°C'),
+    ('l2_autumn_drying', 14, 9, 1, False, '1', '°C'),
+    ('l2_deviation_alarm', 14, 22, 1, False, '1', '°C'),
+    ('dhw_feedforward', 16, 7, 2, False, '1', '°C'),
+    ('dhw_alarm_delay', 16, 21, 2, False, '10', 's'),
+    ('dhw_deviation_alarm', 16, 23, 2, False, '1', '°C'),
+    ('valve_center_close', 44, 8, 1, False, '1', 'raw'),
+    ('deviation_alarm_delay', 44, 28, 1, False, '10', 'min'),
+    ('l1_motor_type', 12, 21, 1, False, '1', 'enum'),
+    ('l2_motor_type', 14, 17, 1, False, '1', 'enum'),
+    ('r1_config', 44, 10, 1, False, '1', 'enum'),
+    ('r2_config', 44, 9, 1, False, '1', 'enum'),
+    ('r1_outdoor_threshold', 44, 15, 1, True, '1', '°C'),
+    ('r1_temperature_threshold', 44, 27, 1, False, '1', '°C'),
+    ('r1_burner_threshold', 14, 25, 1, False, '1', '°C'),
+    ('r1_burner_hysteresis', 14, 26, 1, False, '1', '°C'),
+    ('pressure_range', 47, 0, 1, False, '0.1', 'bar'),
+    ('pressure_upper_alarm', 47, 1, 1, False, '0.1', 'bar'),
+    ('pressure_filling_alarm', 47, 2, 1, False, '0.1', 'bar'),
+    ('pressure_lower_alarm', 47, 3, 1, False, '0.1', 'bar'),
+    ('consumption_alarm_interval', 47, 4, 1, False, '1', 'min'),
+    ('pump_indication', 47, 6, 1, False, '1', 'enum'),
+    ('room_delay', 12, 20, 1, False, '0.1', 'h'),
+    ('signal_min', 12, 15, 1, False, '1', '%'),
+    ('signal_max', 12, 16, 1, False, '1', '%'),
+    ('power_limit', 44, 5, 2, False, '1', 'kW'),
+    ('dhw_boost', 16, 4, 1, False, '1', '°C'),
+    ('dhw_high_alarm', 16, 6, 1, False, '1', '°C'),
+    ('energy_pulse_factor', 44, 2, 1, False, '0.1', 'kWh'),
+    ('district_water_pulse', 44, 4, 1, False, '1', 'l'),
+    ('consumption_water_pulse', 44, 18, 1, False, '1', 'l'),
+]
 for _pid, _prefix in ((65, 'l1'), (66, 'l2')):
     for _i in range(1, 6):
         FIELDS.append((f'{_prefix}_curve_y{_i}', _pid, _i, 1, False, '1', '°C'))
@@ -136,7 +177,7 @@ def exchange(ser, pid):
             'captured_at': utc()}
 
 
-def acquire(ser, destination, delay, start=0, end=255):
+def acquire(ser, destination, delay, start=0, end=255, quick=False):
     """Persist every response immediately, keeping partial failures for forensics."""
     if not 0 <= start <= end <= 255:
         raise ValueError('Invalid ID range')
@@ -145,9 +186,13 @@ def acquire(ser, destination, delay, start=0, end=255):
     output = {'schema': SCHEMA, 'created_at': utc(), 'finished_at': None,
               'device': {'model': 'EH-203', 'expected_firmware': '2.15', 'serial_port': getattr(ser, 'port', None),
                          'wire': SERIAL}, 'range': [start, end], 'complete': False, 'records': {}}
+    ids = list(range(start, end + 1))
+    if quick:
+        ids = QUICK_IDS
+        output['profile'] = 'eh203-2.15-bench-v1'
     atomic_json(destination, output)
     try:
-        for pid in range(start, end + 1):
+        for pid in ids:
             try:
                 rec = exchange(ser, pid)
             except (OSError, ValueError) as exc:
@@ -163,11 +208,14 @@ def acquire(ser, destination, delay, start=0, end=255):
                 time.sleep(delay)
     finally:
         output['finished_at'] = utc()
-        output['complete'] = (len(output['records']) == end-start+1 and all(
+        output['complete'] = (len(output['records']) == len(ids) and all(
             record['status'] in ('accepted', 'rejected') for record in output['records'].values()))
         output['records_sha256'] = digest(output['records'])
         atomic_json(destination, output)
     return output
+
+
+QUICK_IDS = list(range(1,48)) + list(range(49,67)) + list(range(95,102))
 
 
 def verify_file(obj, require_full=True):
@@ -177,13 +225,14 @@ def verify_file(obj, require_full=True):
     if require_full and [a, b] != [0, 255]:
         raise ValueError('Not a complete 0..255 capture')
     records = obj['records']
-    if set(records) != {str(x) for x in range(a, b + 1)}:
+    ids = QUICK_IDS if obj.get('profile') == 'eh203-2.15-bench-v1' else list(range(a,b+1))
+    if set(records) != {str(x) for x in ids}:
         raise ValueError('Missing or extra IDs')
     if obj.get('records_sha256') != digest(records):
         raise ValueError('SHA256 mismatch (raw record data modified)')
     if not obj.get('complete'):
         raise ValueError('Capture incomplete')
-    for pid in range(a, b+1):
+    for pid in ids:
         rec = records[str(pid)]
         if rec['id'] != pid or bytes.fromhex(rec['tx']) != request(pid):
             raise ValueError(f'ID {pid}: request mismatch')
@@ -191,6 +240,8 @@ def verify_file(obj, require_full=True):
         if state != rec['status'] or error is not None or rec['data'] != (
                 data.hex(' ').upper() if data is not None else None):
             raise ValueError(f'ID {pid}: response mismatch')
+    if obj.get('profile') and any(records[str(i)]['status'] != 'accepted' for i in ids):
+        raise ValueError('Quick profile mismatch; run full capture')
     ident = records['1']
     if require_full:
         if ident['status'] != 'accepted':
@@ -207,10 +258,10 @@ def known_fields(snapshot):
     for name, pid, offset, width, signed, factor, unit in FIELDS:
         r = snapshot['records'][str(pid)]
         if r['status'] != 'accepted':
-            continue
+            raise ValueError(f'Missing known field {name}')
         data = bytes.fromhex(r['data'])
         if len(data) < offset+width:
-            continue
+            raise ValueError(f'Truncated known field {name}')
         raw = int.from_bytes(data[offset:offset+width], 'big', signed=signed)
         val = Decimal(raw)*Decimal(factor)
         out[name] = {'value': str(val), 'raw': raw, 'unit': unit, 'id': pid,
@@ -233,7 +284,7 @@ def compare(first, second):
     raw_changes = []
     raw_diffs = {}
     live_ids = {2, 3, 15, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 33, 34, 36, 38, 41, 46, 49, 50, 51, 54, 56, 58, 59, 60, 61}
-    for pid in range(256):
+    for pid in sorted(map(int, set(first['records']) & set(second['records']))):
         r1, r2 = first['records'][str(pid)], second['records'][str(pid)]
         if (r1['status'], r1['data']) != (r2['status'], r2['data']):
             raw_changes.append(pid)
@@ -244,7 +295,7 @@ def compare(first, second):
                 offsets = None
             raw_diffs[str(pid)] = {'before_status': r1['status'], 'after_status': r2['status'],
                                    'changed_data_offsets': offsets,
-                                   'category': 'live_or_transient_candidate' if pid in live_ids else 'unknown_or_configuration_review_required'}
+                                   'category': 'timestamp_candidate' if offsets and set(offsets) <= {2: set(range(7)), 3: set(range(7)), 36: {11,12}, 38: {11,12}, 46: {21,22}}.get(pid, set()) else 'unknown_or_configuration_review_required'}
     if field_changes:
         status = 'settings_changed'
     elif raw_changes:
@@ -270,6 +321,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest='action', required=True)
     cap = sub.add_parser('capture', help='Read all 256 IDs and save durable raw evidence')
+    cap.add_argument('--quick', action='store_true', help='Use bench firmware 2.15 profile; full capture required for discovery')
     cap.add_argument('--port', default='/dev/ttyUSB0')
     cap.add_argument('--output', type=Path, required=True)
     cap.add_argument('--delay', type=float, default=0.25)
@@ -292,14 +344,14 @@ def main(argv=None):
             import serial
             with serial.Serial(args.port, 4800, timeout=1.5, write_timeout=1.5,
                                exclusive=True, rtscts=False, dsrdtr=False, xonxoff=False) as ser:
-                result = acquire(ser, args.output, args.delay)
+                result = acquire(ser, args.output, args.delay, quick=args.quick)
             if not result['complete']:
                 raise ValueError('Incomplete acquisition; preserved partial evidence')
             verify_file(result)
             print('Complete capture verified:', args.output)
         elif args.action == 'verify':
             verify_file(load(args.capture))
-            print('Full 256-ID capture structurally verified; not yet a complete settings backup')
+            print('Capture structurally verified; not yet a complete settings backup')
         elif args.action == 'export':
             atomic_json(args.output, known_fields(load(args.capture)))
             print('Selective read-only settings export:', args.output)
