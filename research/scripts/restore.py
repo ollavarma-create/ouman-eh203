@@ -2,6 +2,7 @@
 """EH-203 offline planning and explicitly confirmed bench block restore."""
 import argparse
 import json
+from decimal import Decimal
 from pathlib import Path
 import backup
 from write_parameter import PARAMETERS
@@ -60,6 +61,8 @@ def plan(source, current):
 BENCH_FIELDS = {12: ('l1_supply_max','l1_room_gain','l1_supply_min','l1_night_reduction','l1_parallel_shift','l1_autumn_drying','l1_outdoor_delay'),
                 13: ('l1_room_setpoint','l1_p_band','l1_i_time','l1_d_time','l1_actuator_time','l2_p_band','l2_i_time','l2_d_time','l2_actuator_time'),
                 14: ('l2_supply_min','l2_supply_max','l2_night_reduction','l2_parallel_shift','l2_autumn_drying','l2_outdoor_delay'), 16: ('dhw_setpoint','dhw_p_band','dhw_i_time','dhw_d_time','dhw_feedforward','dhw_fast_drive','dhw_alarm_delay','dhw_deviation_alarm')}
+BENCH_FIELDS[44] = ('r1_config','r2_config','r1_outdoor_threshold','r1_temperature_threshold')
+BENCH_FIELDS[47] = ('pressure_range','pressure_upper_alarm','pressure_filling_alarm','pressure_lower_alarm','consumption_alarm_interval')
 BOUNDS = {'l1_supply_max': (15, 95), 'l1_room_gain': (0, 100),
           'l1_room_setpoint': (100, 300), 'dhw_setpoint': (500, 650)}
 
@@ -75,9 +78,15 @@ BOUNDS.update(dhw_p_band=(1,500),dhw_i_time=(0,1000),dhw_d_time=(0,1000),
               dhw_feedforward=(0,500),dhw_fast_drive=(0,100),
               dhw_alarm_delay=(0,360),dhw_deviation_alarm=(0,50))
 
+BOUNDS.update(r1_config=(0,8),r2_config=(0,4),
+              r1_outdoor_threshold=(-30,30),r1_temperature_threshold=(0,100),
+              pressure_range=(1,100),pressure_upper_alarm=(0,100),
+              pressure_filling_alarm=(0,100),pressure_lower_alarm=(0,100),
+              consumption_alarm_interval=(0,255))
+# ID47 is short; use the verified source length, not a 31-byte assumption.
 def block(snapshot, pid):
     raw = bytes.fromhex(snapshot['records'][str(pid)]['data'])
-    if len(raw) != 31:
+    if (pid != 47 and len(raw) != 31) or (pid == 47 and not 7 <= len(raw) <= 31):
         raise ValueError('Unexpected block size')
     return raw
 
@@ -109,6 +118,14 @@ def propose(source, pid, before):
             modified[offset:offset+width] = target[offset:offset+width]
         if pid in (12,14) and modified[3]>modified[4]:
             raise ValueError('Supply min exceeds max')
+        if pid == 44:
+            pair = tuple(modified[9:11])
+            if pair[0] not in (0,1,4) or pair[1] not in (0,1,4,6,7,8) or ((pair[0]==4)!=(pair[1]==4)):
+                raise ValueError('Unsupported coupled relay configuration')
+            if pair[1]==8 and old[10]!=8:
+                raise ValueError('Burner mode requires separate dependency validation')
+        if pid == 47 and not modified[3] <= modified[2] <= modified[1] <= modified[0]:
+            raise ValueError('Pressure limits out of order')
         expected[pid] = bytes(modified)
     return expected
 
@@ -119,7 +136,7 @@ def live(source, pid, path, port, execute):
     backup.verify_file(source)
     if source.get('profile') or {int(k) for k,v in source['records'].items() if v['status']=='accepted'} != set(backup.QUICK_IDS):
         raise ValueError('Verified full source required')
-    ids = (12,13,14,16,65,66)
+    ids = (12,13,14,16,44,47,65,66)
     record = dict(schema='ouman.eh203.block-restore.v1', source_sha256=source['records_sha256'],
                   id=pid, status='started', created_at=backup.utc(), frames=[])
     with path.open('x') as f:
@@ -146,13 +163,25 @@ def live(source, pid, path, port, execute):
             if decode(ident,1,len(ident)-6)[:9]!=bytes.fromhex(source['records']['1']['data'])[:9]:
                 raise ValueError('Controller mismatch')
             def read():
-                return {i:decode(exchange(frame(0x81,i)),i,31) for i in ids}
+                return {i:decode(exchange(frame(0x81,i)),i,len(block(source,i))) for i in ids}
             before=read()
             expected=propose(source,pid,before)
             record.update(before={i:v.hex(' ') for i,v in before.items()},
                           expected={i:v.hex(' ') for i,v in expected.items()})
+            changes=[]
+            for name,i,offset,width,signed,factor,unit in backup.FIELDS:
+                if i not in before:
+                    continue
+                a=int.from_bytes(before[i][offset:offset+width],'big',signed=signed)
+                b=int.from_bytes(expected[i][offset:offset+width],'big',signed=signed)
+                if a!=b:
+                    changes.append(dict(name=name,id=i,offset=offset,current=str(Decimal(a)*Decimal(factor)),
+                                        target=str(Decimal(b)*Decimal(factor)),unit=unit))
+            record['changes']=changes
             record['status']='preview'
             save()
+            for change in changes:
+                print("{name}: {current} -> {target} {unit}".format(**change))
             print('ID',pid,'before:',before[pid].hex(' '),'target:',expected[pid].hex(' '))
             if before==expected:
                 record['status']='unchanged'
@@ -191,7 +220,7 @@ def main(argv=None):
     m.add_argument('--dry-run',action='store_true')
     m.add_argument('--live-preview',action='store_true')
     m.add_argument('--execute-bench',action='store_true')
-    p.add_argument('--block',type=int,choices=(12,13,14,16,65,66))
+    p.add_argument('--block',type=int,choices=(12,13,14,16,44,47,65,66))
     p.add_argument('--all',action='store_true')
     p.add_argument('--port',default='/dev/ttyUSB0')
     p.add_argument('--source',type=Path,required=True)
@@ -203,10 +232,10 @@ def main(argv=None):
             raise FileExistsError('Output exists')
         if not args.dry_run:
             if (args.block is None) == (not args.all) or args.current is not None:
-                raise ValueError('Live mode requires --block and no --current')
+                raise ValueError('Live mode requires exactly one of --block or --all, and no --current')
             source=backup.load(args.source)
             if args.all:
-                ids=(65,66,12,13,14,16)
+                ids=(65,66,12,13,14,16,44,47)
                 paths=[args.output.with_name(args.output.stem+'_id'+str(i)+'.json') for i in ids]
                 if any(p.exists() for p in paths):
                     raise FileExistsError('Batch log already exists')
