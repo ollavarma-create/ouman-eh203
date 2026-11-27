@@ -48,3 +48,7 @@ Relay configuration, weekly schedules, commanded states, temporary overrides and
 ### Digital input research checkpoint (2026-11-27)
 
 Digital input function selection, energy/water pulse factors, consumption monitoring interval and pump indication are now mapped for the tested firmware 2.15. Pump alarm acknowledgement and clearance were observed, but active alarm encoding remains unresolved. See [parameter map](docs/PARAMETER_MAP.md) and [research status](docs/RESEARCH_STATUS.md). ESPHome/Home Assistant remains read-only; newly mapped settings are not automatically write-enabled.
+
+### Measurement 6 checkpoint (2026-11-27)
+
+Measurement routing, wind compensation signal limits and all four pressure configuration fields are mapped by LCD experiments. Pressure readings are context-dependent; ID54 interpretation and physical calibration remain provisional. See [parameter map](docs/PARAMETER_MAP.md). Next: disabled measurement selection and energy/pulse counters. ESPHome remains read-only.
