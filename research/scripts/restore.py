@@ -61,7 +61,7 @@ def plan(source, current):
 BENCH_FIELDS = {12: ('l1_supply_max','l1_room_gain','l1_supply_min','l1_night_reduction','l1_parallel_shift','l1_autumn_drying','l1_outdoor_delay'),
                 13: ('l1_room_setpoint','l1_p_band','l1_i_time','l1_d_time','l1_actuator_time','l2_p_band','l2_i_time','l2_d_time','l2_actuator_time'),
                 14: ('l2_supply_min','l2_supply_max','l2_night_reduction','l2_parallel_shift','l2_autumn_drying','l2_outdoor_delay'), 16: ('dhw_setpoint','dhw_p_band','dhw_i_time','dhw_d_time','dhw_feedforward','dhw_fast_drive','dhw_alarm_delay','dhw_deviation_alarm')}
-BENCH_FIELDS[44] = ('r1_config','r2_config','r1_outdoor_threshold','r1_temperature_threshold')
+BENCH_FIELDS[44] = ('r1_config','r2_config','r1_outdoor_threshold','r1_temperature_threshold','energy_pulse_factor')
 BENCH_FIELDS[47] = ('pressure_range','pressure_upper_alarm','pressure_filling_alarm','pressure_lower_alarm','consumption_alarm_interval')
 BOUNDS = {'l1_supply_max': (15, 95), 'l1_room_gain': (0, 100),
           'l1_room_setpoint': (100, 300), 'dhw_setpoint': (500, 650)}
@@ -78,7 +78,7 @@ BOUNDS.update(dhw_p_band=(1,500),dhw_i_time=(0,1000),dhw_d_time=(0,1000),
               dhw_feedforward=(0,500),dhw_fast_drive=(0,100),
               dhw_alarm_delay=(0,360),dhw_deviation_alarm=(0,50))
 
-BOUNDS.update(r1_config=(0,8),r2_config=(0,4),
+BOUNDS.update(energy_pulse_factor=(0,10),r1_config=(0,8),r2_config=(0,4),
               r1_outdoor_threshold=(-30,30),r1_temperature_threshold=(0,100),
               pressure_range=(1,100),pressure_upper_alarm=(0,100),
               pressure_filling_alarm=(0,100),pressure_lower_alarm=(0,100),
@@ -120,6 +120,20 @@ def propose(source, pid, before):
     old = before[pid]
     expected = dict(before)
     if pid in (4,6,8):
+        if pid in (4,6):
+            desired=dict(before)
+            for j in (4,6):
+                desired[j]=before[j][:1]+block(source,j)[1:29]+before[j][29:]
+                desired[j+1]=block(source,j+1)[:28]+before[j+1][28:]
+            def combined(d):
+                return sorted(schedule_key(d[4],d[5],4)+schedule_key(d[6],d[7],6))
+            if combined(before)==combined(desired):
+                return dict(before)
+            # Do not overwrite a populated shared table piecemeal.
+            if any(schedule_key(before[j],before[j+1],j) for j in (4,6)):
+                # Allow the previously tested empty second pair continuation only.
+                if not (pid==6 and schedule_equal(before,desired,4) and not schedule_key(before[6],before[7],6)):
+                    raise ValueError('Shared schedule differs; populated table replacement not validated')
         other=pid+1
         events=block(source,other)
         schedule_rows(target,events,pid)
@@ -133,6 +147,14 @@ def propose(source, pid, before):
         if any(c>6 for c in codes) or codes.count(2)>1:
             raise ValueError('Unsupported digital input assignment')
         expected[pid]=bytes(((old[0]&0xf0)|codes[2],target[1]))
+        if expected[pid]!=old:
+            if old!=b'\x00\x00' or expected[pid]!=b'\x04\x00' or before[17][17]!=0x63:
+                raise ValueError('Digital transition not yet validated')
+            mirror=bytearray(before[17])
+            mirror[17]=2
+            expected[17]=bytes(mirror)
+        elif codes[2]==4 and before[17][17]!=2:
+            raise ValueError('Unexpected Dig3 energy routing')
     elif pid == 17:
         # Only individually observed routing slots and codes. Never copy unknown bytes.
         modified=bytearray(old)
@@ -171,6 +193,8 @@ def propose(source, pid, before):
         if pid in (12,14) and modified[3]>modified[4]:
             raise ValueError('Supply min exceeds max')
         if pid == 44:
+            if modified[2]!=old[2] and (before[43]!=b'\x04\x00' or before[17][17]!=2 or old[2]!=0 or modified[2]!=10):
+                raise ValueError('Energy pulse transition outside tested bench proposal')
             pair = tuple(modified[9:11])
             if pair[0] not in (0,1,4) or pair[1] not in (0,1,4,6,7,8) or ((pair[0]==4)!=(pair[1]==4)):
                 raise ValueError('Unsupported coupled relay configuration')
@@ -307,7 +331,7 @@ def main(argv=None):
                 raise ValueError('Live mode requires exactly one of --block or --all, and no --current')
             source=backup.load(args.source)
             if args.all:
-                ids=(65,66,12,13,14,16,44,47,4,6,8)
+                ids=(65,66,12,13,14,16,43,44,47,4,6,8)
                 paths=[args.output.with_name(args.output.stem+'_id'+str(i)+'.json') for i in ids]
                 if any(p.exists() for p in paths):
                     raise FileExistsError('Batch log already exists')
