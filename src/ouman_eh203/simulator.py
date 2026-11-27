@@ -11,6 +11,8 @@ class SimulatedSerial:
         self.fault = None
         self.relocate_schedules = False
         self.recalculate_curves = False
+        self.defer_l1 = False
+        self.deferred_l1 = None
 
     @classmethod
     def from_backups(cls, original, factory):
@@ -36,12 +38,19 @@ class SimulatedSerial:
         result, self.pending = self.pending[:n], self.pending[n:]
         return result
 
+    def finish_l1(self):
+        if self.deferred_l1 is not None:
+            self.blocks[65]=self.deferred_l1
+            self.deferred_l1=None
+
     def factory_reset(self):
+        self.deferred_l1=None
         self.blocks = dict(self.factory)
         self.persistent = dict(self.factory)
         self.pending = b''
 
     def reboot(self):
+        self.deferred_l1=None
         self.blocks = dict(self.persistent)
         self.pending = b''
         self.fault = None
@@ -109,7 +118,10 @@ class SimulatedSerial:
                 b=bytearray(updated[j])
                 b[2]=(b[1]+b[3])//2
                 b[4]=(b[3]+b[5])//2
-                updated[j]=bytes(b)
+                if j==65 and self.defer_l1:
+                    self.deferred_l1=bytes(b)
+                else:
+                    updated[j]=bytes(b)
         if pid==7 and self.relocate_schedules:
             from .schedules import relocate_shared
             updated=relocate_shared(updated)
