@@ -191,3 +191,7 @@ R1 renamed TEST12345 on LCD, but no corresponding payload change found. R1 tempe
 Extended scan with burner control active: all 128 IDs 128–255 returned 02 01 02 00 FF 02, consistent with previous day's scan. No new readable IDs in this configuration. Scope is firmware 2.15 and tested configurations, not all firmware or commands. Continue ordinary research scans 0–127; retain optional full 0–255 raw snapshot for compatibility research.
 
 Next: digital input configuration, then remaining LCD menus and selective bench restore. Keep relay loads disconnected and existing writer allowlist unchanged.
+
+## Digital input checkpoint — 2026-11-27
+
+All seven observed digital input function codes mapped in ID43; pulse factors in ID44 and consumption monitoring interval and pump indication in ID47. UI exclusivity observed for home/away. Renaming Dig1 did not expose a corresponding payload change in the tested sweep. Polarity menu was unavailable on the bench configuration; GSM dependency is unverified. Pump alarm lifecycle tested through LCD acknowledgement and clearance. Header bit 2 is response-specific and cannot be treated as an active alarm flag; ID46 timestamp persisted after clearance. See PARAMETER_MAP.md. Next: measurement 6 and pressure measurement configuration. Physical contact and pulse-counter tests remain open. No new serial writes tested.
