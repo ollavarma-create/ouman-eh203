@@ -40,3 +40,7 @@ Remove `--dry-run` only on the bench and explicitly confirm. The writer allowlis
 ## Integration and backup roadmap
 
 ESPHome/Home Assistant will remain read-only (0x81 only). A separate backup/editor application will handle selective settings migration; no general restore or schedule writing is implemented. See the [research status](docs/RESEARCH_STATUS.md) for the November 27 findings.
+
+## Relay research update
+
+Relay configuration, weekly schedules, commanded states, temporary overrides and burner settings are mapped in the [parameter map](docs/PARAMETER_MAP.md). Relay names and temperature-control hysteresis remain unresolved. All IDs 128–255 were rejected again with burner control active on firmware 2.15. Next: digital inputs. Relay writes remain untested.
