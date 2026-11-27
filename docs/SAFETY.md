@@ -28,3 +28,7 @@ Keep relay loads disconnected during bench experiments. Relay configuration can 
 ## Digital input restore boundary
 
 Mapped digital input functions, pulse factors, consumption interval and pump indication are candidates for portable configuration, not validated write targets. Preserve unknown adjacent bytes and inactive settings. Respect UI exclusivity and automatic measurement configuration dependencies. Changing pump indication can trigger a real alarm. Do not restore live alarm flags, timestamps, counters or acknowledgement state. Do not expose a header bit as an active-alarm safety sensor. ESPHome/Home Assistant must remain read-only.
+
+## Measurement 6 boundaries
+
+Decode ID27 only with known measurement routing. Disconnected pressure input can report plausible full-scale pressure; do not assume sensor validity or use these readings as a safety interlock. ID54 semantics and physical calibration are unverified. L2 room routing with disconnected sensor changed calculated supply target to 70°C on bench. Routing and duplicated compensation limits have dependencies; pressure settings and routing remain excluded from write allowlist until independently validated. Preserve unknown bytes, do not restore live readings or alarm history. ESPHome/HA remains read-only.
