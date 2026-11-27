@@ -8,6 +8,7 @@ class SimulatedSerial:
         self.pending = b''
         self.writes = []
         self.fault = None
+        self.relocate_schedules = False
 
     @classmethod
     def from_backups(cls, original, factory):
@@ -98,5 +99,8 @@ class SimulatedSerial:
         else:
             return False
         updated[pid]=data
+        if pid==7 and self.relocate_schedules:
+            from .schedules import relocate_shared
+            updated=relocate_shared(updated)
         self.blocks=updated
         return True
