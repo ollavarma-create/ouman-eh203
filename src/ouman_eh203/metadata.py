@@ -62,6 +62,53 @@ for prefix,fi,en in [('l1','L1','H1'),('l2','L2','H2')]:
         factory_default=1, choices={0:dict(fi='5-piste',en='5-point'),1:dict(fi='3-piste',en='3-point')},
         dependencies=dict(shared_with='l2_curve_type' if prefix=='l1' else 'l1_curve_type'))
 
+# Manuals, page 22: tuning defaults may vary by device.
+for prefix,fi,en in [('l1','L1','H1'),('l2','L2','H2'),('dhw','LV','HW')]:
+    for suffix,lf,le,limits,default,df,de in [
+        ('p_band','P-alue','P-area',[10,300],70 if prefix=='dhw' else 140,
+         'Lämpötilapoikkeama, joka vastaa täyttä venttiilin ohjausta.',
+         'Temperature deviation corresponding to full valve control.'),
+        ('i_time','I-aika','I-time',[5,300],18 if prefix=='dhw' else 50,
+         'Aika, jonka kuluessa integraalitoiminto korjaa pysyvää poikkeamaa.',
+         'Integration time for correcting persistent deviation.'),
+        ('d_time','D-aika','D-time',[0,10],0,
+         'Nopeuttaa reagointia lämpötilan muutoksiin; voi aiheuttaa huojuntaa.',
+         'Accelerates response to temperature changes; may cause oscillation.'),
+    ]:
+        key=f'{prefix}_{suffix}'
+        _add(key,lf,le,lf,le,22,limits,default)
+        PARAMETERS[key].update(access_level='service',
+            menu_path=dict(fi=[fi,'Huoltotila','Viritysarvot'],en=[en,'Maint mode','Tuning values']),
+            description=dict(fi=df,en=de))
+for key,lf,le,limits,default,df,de in [
+    ('dhw_feedforward','Ennakoint','Anticipate',[50,250],140,
+     'Hyödyntää kiertovesianturia kulutusmuutoksiin reagoimisessa.',
+     'Uses circulation sensor readings to respond to consumption changes.'),
+    ('dhw_fast_drive','Pika-ajo','Quick run',[0,100],60,
+     'Tehostaa reagointia käyttöveden kulutusmuutoksiin.',
+     'Enhances response to changes in hot water consumption.'),
+]:
+    _add(key,lf,le,lf,le,22,limits,default)
+    PARAMETERS[key].update(access_level='service',
+        menu_path=dict(fi=['LV','Huoltotila','Viritysarvot'],en=['HW','Maint mode','Tuning values']),
+        description=dict(fi=df,en=de))
+for prefix,fi,en in [('l1','L1','H1'),('l2','L2','H2')]:
+    key=f'{prefix}_actuator_time'
+    _add(key,'Moottorin ajoaika','Actuator running time',None,None,25,None,150)
+    PARAMETERS[key].update(access_level='service',
+        menu_path=dict(fi=None,en=[en,'Maint mode','Actuator select']),
+        description=dict(fi='Venttiilin ajoaika täysin suljetusta täysin avoimeen asentoon.',
+                         en='Time to drive the valve from fully closed to fully open.'),
+        dependencies=dict(motor_type_key=f'{prefix}_motor_type'))
+    key=f'{prefix}_motor_type'
+    _add(key,'Moottorivalinta','Actuator selection',None,'Actuator select',25,None,0)
+    PARAMETERS[key].update(access_level='service',
+        menu_path=dict(fi=None,en=[en,'Maint mode','Actuator select']),
+        choices={0:dict(fi='3-tila 24 VAC',en='3-point 24 VAC'),
+                 1:dict(fi='0–10 V',en='0–10 V'),
+                 2:dict(fi='2–10 V',en='2–10 V')},
+        dependencies=dict(unmapped_manual_option='230 VAC 3-point'))
+
 def get_metadata(key):
     """Return a detached metadata record; unknown keys raise KeyError."""
     from copy import deepcopy
