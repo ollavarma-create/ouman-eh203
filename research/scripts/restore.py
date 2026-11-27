@@ -205,6 +205,12 @@ def propose(source, pid, before):
                 raise ValueError('Burner mode requires separate dependency validation')
         if pid == 47 and not modified[3] <= modified[2] <= modified[1] <= modified[0]:
             raise ValueError('Pressure limits out of order')
+        if pid == 14:
+            for offset, initial, final in ((25,70,83),(26,5,9)):
+                if old[offset]!=target[offset]:
+                    if (old[offset],target[offset])!=(initial,final) or before[44][10]!=7:
+                        raise ValueError('Burner parameter transition outside bench proposal')
+                    modified[offset]=target[offset]
         if pid == 12:
             desired_delay=target[20]
             if block(source,14)[16]!=desired_delay or old[20]!=before[14][16]:
