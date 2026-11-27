@@ -9,13 +9,32 @@ from .schedules import semantic_key
 IDS=(4,5,6,7,8,9,12,13,14,16,17,43,44,47,65,66)
 ORDER=(65,66,12,13,16,43,44,14,47,4,6,8)
 
-def plan(source,current):
+def compatibility(source_identity, target_identity):
+    if len(source_identity)!=9 or len(target_identity)!=9:
+        raise ValueError('Incomplete identity')
+    if source_identity[4:7]!=b'203' or target_identity[4:7]!=b'203':
+        raise ValueError('Unsupported model')
+    return dict(device_mismatch=source_identity[:4]!=target_identity[:4],
+                firmware_mismatch=source_identity[8]!=target_identity[8],
+                source_firmware=source_identity[8],target_firmware=target_identity[8],
+                compatible=(source_identity[8],target_identity[8])==(215,215))
+
+def authorize(source_identity,target_identity,allow_device_mismatch=False,allow_firmware_mismatch=False):
+    report=compatibility(source_identity,target_identity)
+    if report['device_mismatch'] and not allow_device_mismatch:
+        raise ValueError('Different controller: explicit device confirmation required')
+    if report['firmware_mismatch'] and not allow_firmware_mismatch:
+        raise ValueError('Different firmware: explicit firmware confirmation required')
+    if not report['compatible']:
+        raise ValueError('No validated firmware migration profile')
+    return report
+
+def plan(source,current,*,allow_device_mismatch=False,allow_firmware_mismatch=False):
     for snap in (source,current):
         verify_file(snap)
         if set(snap['records'])!={str(i) for i in range(256)}:
             raise ValueError('Full backup required')
-    if block_identity(source)!=block_identity(current):
-        raise ValueError('Identity mismatch')
+    authorize(block_identity(source),block_identity(current),allow_device_mismatch,allow_firmware_mismatch)
     return build(source,{i:block(current,i) for i in IDS})
 
 def block_identity(s):
@@ -51,17 +70,21 @@ def build(source,before):
         raise ValueError('Unrestored schedule or digital dependency')
     return steps
 
-def execute_simulated(sim,source,steps,log):
+def execute_simulated(sim,source,steps,log,*,target_identity=None,allow_device_mismatch=False,allow_firmware_mismatch=False):
     if type(sim) is not SimulatedSerial:
         raise TypeError('Simulation only')
     verify_file(source)
     def read():
         return {i:decode(exchange(sim,request(i)),i,len(block(source,i))) for i in IDS}
-    if decode(exchange(sim,request(1)),1,len(sim.blocks[1]))[:9]!=block_identity(source):
-        raise ValueError('Identity mismatch')
+    actual=decode(exchange(sim,request(1)),1,len(sim.blocks[1]))[:9]
+    if actual!=(target_identity if target_identity is not None else block_identity(source)):
+        raise ValueError('Target differs from approved identity')
+    authorize(block_identity(source),actual,allow_device_mismatch,allow_firmware_mismatch)
     if steps!=build(source,read()):
         raise ValueError('Stale or modified plan')
     for pid,before,expected in steps:
+        if decode(exchange(sim,request(1)),1,len(sim.blocks[1]))[:9]!=actual:
+            raise ValueError('Target identity changed')
         if read()!=before:
             raise ValueError('Stale plan')
         entry={'id':pid,'status':'write_outcome_unknown','tx':write_frame(pid,expected[pid]).hex()}
