@@ -193,7 +193,7 @@ def compare(first, second):
                 offsets = None
             raw_diffs[str(pid)] = {'before_status': r1['status'], 'after_status': r2['status'],
                                    'changed_data_offsets': offsets,
-                                   'category': 'timestamp_candidate' if offsets and set(offsets) <= {2: set(range(7)), 3: set(range(7)), 36: {11,12}, 38: {11,12}, 46: {21,22}}.get(pid, set()) else 'unknown_or_configuration_review_required'}
+                                   'category': 'timestamp_candidate' if offsets and set(offsets) <= {2: set(range(7)), 3: set(range(7)), 36: set(range(6,13)), 38: set(range(6,13)), 46: {21,22}}.get(pid, set()) else 'unknown_or_configuration_review_required'}
     if field_changes:
         status = 'settings_changed'
     elif raw_changes:
