@@ -5,6 +5,7 @@ class SimulatedSerial:
     def __init__(self, blocks):
         self.blocks = {int(k): bytes(v) for k,v in blocks.items()}
         self.factory = dict(self.blocks)
+        self.persistent = dict(self.blocks)
         self.pending = b''
         self.writes = []
         self.fault = None
@@ -37,9 +38,11 @@ class SimulatedSerial:
 
     def factory_reset(self):
         self.blocks = dict(self.factory)
+        self.persistent = dict(self.factory)
         self.pending = b''
 
     def reboot(self):
+        self.blocks = dict(self.persistent)
         self.pending = b''
         self.fault = None
 
@@ -101,6 +104,7 @@ class SimulatedSerial:
             return False
         updated[pid]=data
         if pid==65 and changes=={0} and self.recalculate_curves:
+            self.persistent.update(updated)
             for j in (65,66):
                 b=bytearray(updated[j])
                 b[2]=(b[1]+b[3])//2
@@ -109,5 +113,9 @@ class SimulatedSerial:
         if pid==7 and self.relocate_schedules:
             from .schedules import relocate_shared
             updated=relocate_shared(updated)
+        if not (pid==65 and changes=={0} and self.recalculate_curves):
+            for j in updated:
+                if j==pid or updated[j]!=self.blocks[j]:
+                    self.persistent[j]=updated[j]
         self.blocks=updated
         return True
