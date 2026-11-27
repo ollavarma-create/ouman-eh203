@@ -86,7 +86,7 @@ Remaining offsets undecoded. The array starts with data byte 0; never shift offs
 ## IDs 18+, 51, 65 and others
 
 - Temperature measurements use signed int16 BE /100 °C; observed raw sentinel `0x865A` on disconnected sensors. ID 18 outdoor and ID 20 L1 supply are verified by LCD/physical changes; other labelled IDs are observational rather than individually altered.
-- **ID 51**: DHW motor-command percent, matched LCD 100% (not a controlled output sweep).
+- **ID 51**: DHW motor-command percent, confirmed LCD sweep 100/50/26/0; see November 27 findings below.
 ## IDs 65 and 66 — five-point heating curves (31 data bytes each)
 
 ID 65 = L1; ID 66 = L2. LCD observations establish non-editable outer X coordinates and three editable interior X coordinates. The outer X values −20 and +20°C are assumed from the manual examples, not independently verified. All five Y coordinates are editable.
@@ -164,3 +164,13 @@ Additional captures: ouman_l1_motor160.json and ouman_l2_motor160.json (64 IDs e
 ## Backup and restore boundary
 
 Read-only raw snapshot of IDs 0–255 is feasible now. A portable configuration export must separately classify confirmed fields, mirrors, live values, identity and unknown data. Restore only independently write-tested allowlisted fields, with target snapshot, compatibility check, explicit diff/approval, read-modify-write, durable journal and full readback; never blindly replay raw blocks. Curve IDs 65/66 are canonical candidates; ID 65 Y3 mirror into ID 12 verified, other directions untested. General restore remains unvalidated. Next: operating modes, writer tests and staged bench restore.
+
+## 2026-11-27 — operating modes, DHW command and weekly schedules
+
+Bench firmware 2.15, LCD changes followed by read-only sweeps. Data offsets exclude the echoed 00 ID prefix.
+
+- ID 42 (0x2A), two data bytes: offset 1 low nibble L1, high nibble L2. Codes 0 automatic, 1 continuous day, 2 continuous night, 3 shutdown, 4 mechanical manual, 5 electrical manual. All six modes observed for both circuits. Mixed L1 day/L2 night returned 00 21; all automatic 00 00. Offset 0 low nibble DHW (LV): 0 automatic, 4 mechanical manual, 5 electrical manual observed; other codes and high nibble unknown. No serial mode writes tested.
+- ID 51 (0x33), offset 0 U8, LCD DHW command percent, scale 1:1: manual LCD 100/50/26/0 matched hex 64/32/1A/00; automatic restored returned 0F (15%). LCD steps need not be uniform. Not measured physical valve feedback. IDs 49/50 remain candidates. ID 15 offset 26 tracked L2 shutdown 48→14→48°C, strong final-target candidate, not independently LCD verified.
+- Weekly schedules share a table across L1/L2. Confirmed block pairs IDs 4/5 and 6/7, each 31 data bytes per ID. Even ID: 14 U16BE minute-of-day values at offsets 1+2*i (i=0..13); offsets 0,29,30 unknown. Odd ID: weekday masks offsets 0..13, event types offsets 14..27, offsets 28..30 unknown. Event codes hex 10 L1 reduction ON, 20 L1 OFF, 11 L2 ON, 21 L2 OFF. High/low nibble interpretation supported for these codes only. Expected weekday bits Mon..Sun = 0..6; observed masks 17,2E,40,7F,1F,60,01 support this mapping, but not every individual bit independently isolated.
+- ON and OFF may have different weekday masks and times. Zero time is valid midnight, not a deletion marker. A single event with zero weekday mask retained its type; clearing the paired event's weekdays removed both and compacted the table across block boundaries. 16 events observed before deletion, 14 after, IDs 6/7 then zero. Last two times 11:50 and 11:54 moved to slots 13/14. Slot order may change on LCD edits; preserve order and raw bytes in backups. IDs 8–11 possible continuation, not proven; total capacity unknown. No LV schedule available on tested LCD. Relay schedules next; no schedule serial writes tested.
+- ESPHome/Home Assistant is permanently read-only (0x81 only); separate offline backup/editor and bench-only restore tooling. Raw snapshots are not transferable settings. Exclude live commands, identity, unknown fields and mirrors from restore. Only independently write-tested fields may be restored with explicit approval, target snapshot, journal and readback. No automatic retries or blind rollback.
