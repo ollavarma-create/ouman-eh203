@@ -202,3 +202,19 @@ R1 renamed TEST12345 on LCD, but no corresponding payload change found. R1 tempe
 Extended scan with burner control active: all 128 IDs 128–255 returned 02 01 02 00 FF 02, consistent with previous day's scan. No new readable IDs in this configuration. Scope is firmware 2.15 and tested configurations, not all firmware or commands. Continue ordinary research scans 0–127; retain optional full 0–255 raw snapshot for compatibility research.
 
 Next: digital input configuration, then remaining LCD menus and selective bench restore. Keep relay loads disconnected and existing writer allowlist unchanged.
+
+## Digital inputs (firmware 2.15, 2026-11-27)
+
+ID43 (0x2B), two data bytes: Dig1 = offset 1 low nibble; Dig2 = offset 1 high nibble; Dig3 = offset 0 low nibble. Offset 0 high nibble unknown. Observed function codes: 0 alarm, 1 half-speed extractor, 2 home/away, 3 pump 1 indication, 4 district heat energy, 5 district heat water, 6 water consumption. Home/away cannot be assigned twice in the tested UI.
+
+| ID (decimal) | Data offset | Meaning | Observations |
+|---|---:|---|---|
+| 44 | 2 | Energy pulse factor, raw / 10 kWh | 05 = 0.5, 0F = 1.5 |
+| 44 | 4 | District heat water litres/pulse | 0C = 12, 64 = 100; UI max 100 |
+| 44 | 18 | Consumption water litres/pulse | 11 = 17; UI max 100 |
+| 47 | 4 | Consumption alarm monitoring interval, minutes | 00 to 1E = 30; UI max 99 |
+| 47 | 6 | Pump indication | 00 overload protection, 01 running status |
+
+Offsets are zero-based after the echoed ID. Observed byte changes establish scaling, not necessarily full field width. Preserve adjacent unknown bytes. Inactive pulse settings persist across function changes. ID17 offset 17 changed 63 to 02 in energy mode and back in district water mode; offset 18 changed 63 to 02 in consumption mode. Exact semantics remain unknown.
+
+Pump alarm experiment: changing indication to running status with open input triggered LCD alarm and buzzer; OK silenced buzzer but LCD alarm remained; reverting indication removed LCD alarm. ID43 header 02 → 06 → 02 → 02. Bit 2 is a candidate unacknowledged-alarm indicator for this response, not a global alarm flag. IDs 96–101 still returned 06 after LCD alarm cleared. ID46 retained timestamp 2026-11-27 11:50:01 after acknowledgement and clearance; history interpretation remains provisional. Physical input states, polarity, names, pulse counters and active alarm encoding remain unresolved. Read mapping only; no new write validation.
