@@ -151,6 +151,47 @@ PARAMETERS['r1_outdoor_threshold']['dependencies']=dict(mode='time/outdoor tempe
 for key in ('l1_deviation_alarm','l2_deviation_alarm','dhw_deviation_alarm'):
     PARAMETERS[key]['dependencies']=dict(delay_key='deviation_alarm_delay')
 
+# Remaining settings. Missing manual evidence stays explicitly unknown.
+for key,fi,en,lf,le,page,default,level in [
+    ('r1_config','Releen 1 ohjaus','Relay 1 control',None,'Relay1 control',26,None,'service'),
+    ('r2_config','Releen 2 ohjaus','Relay 2 control',None,'Relay 2 control',27,None,'service'),
+    ('r1_temperature_threshold','R1 lämpöraja','Relay 1 temperature threshold','R1 lämpöraja',None,26,None,'user'),
+    ('r1_burner_threshold','Polttimen käynnistysraja','Burner start threshold','Poltin ON',None,26,None,'user'),
+    ('r1_burner_hysteresis','Polttimen hystereesi','Burner hysteresis',None,None,26,None,'service'),
+    ('pressure_range','Paineen mittausalue','Pressure measurement range','Mittausalue','Meas.area',31,None,'special_service'),
+    ('pressure_upper_alarm','Ylärajahälytys','Overpressure alarm','Ylärajahäl.','OverpressAl.',31,2.2,'special_service'),
+    ('pressure_filling_alarm','Täyttöhälytys','Fill alarm','Täyttöhäl.','Fill alarm',31,0.7,'special_service'),
+    ('pressure_lower_alarm','Alarajahälytys','Lower limit alarm','Alarajahäl.','LowerLimAl.',31,0.5,'special_service'),
+    ('consumption_alarm_interval','Kulutushälytyksen tarkkailujakso','Consumption alarm control period','Tarkkjakso','CtrlPeriod',33,0,'special_service'),
+    ('pump_indication','Pumpun indikointi','Pump indication',None,None,33,None,'special_service'),
+    ('signal_min','Kompensoinnin alaraja','Compensation signal minimum',None,'Min',30,None,'special_service'),
+    ('signal_max','Kompensoinnin yläraja','Compensation signal maximum',None,'Max',30,None,'special_service'),
+    ('energy_pulse_factor','Energia pulssia kohti','Energy per pulse','KL Energia aset.','DH Energy set',33,None,'special_service'),
+    ('district_water_pulse','Kaukolämpövesi pulssia kohti','District heating water per pulse','KL Vesi m3','DH watr metr set',33,None,'special_service'),
+    ('consumption_water_pulse','Vedenkulutus pulssia kohti','Water consumption per pulse','Veden kulut. m3','Watr consm set',33,None,'special_service'),
+]:
+    _add(key,fi,en,lf,le,page,None,default)
+    PARAMETERS[key].update(access_level=level)
+PARAMETERS['consumption_alarm_interval'].update(manual_range=[0,99],
+    description=dict(fi='Hälytys, jos vuorokaudessa ei ole asetetun pituista kulutuksetonta jaksoa. Nolla poistaa toiminnon käytöstä.',
+                     en='Alarm if no consumption-free interval of the configured length occurs in 24 hours. Zero disables the function.'))
+for key in ('pressure_range','pressure_upper_alarm','pressure_filling_alarm','pressure_lower_alarm'):
+    PARAMETERS[key].update(menu_path=dict(fi=['Erikoishuolto','Mitt.6 asetus','Verk.paine'],
+                                          en=['Special mainten.','Meas. 6 setting','Network press.']),
+                           dependencies=dict(measurement6='network_pressure'))
+PARAMETERS['pressure_range']['description']=dict(fi='Mittausalue riippuu lähettimestä ja jännitteenjaosta.',
+    en='Measurement range depends on transmitter and voltage divider.')
+for key in ('signal_min','signal_max'):
+    PARAMETERS[key].update(dependencies=dict(measurement6='external_compensation'),
+        menu_path=dict(fi=None,en=['Special mainten.','Meas. 6 setting','E-compensation','Comp/Meas. data']))
+PARAMETERS['r1_temperature_threshold']['dependencies']=dict(mode='temperature operated',measurement=11)
+for key in ('r1_burner_threshold','r1_burner_hysteresis'):
+    PARAMETERS[key]['dependencies']=dict(mode='burner control',measurement=10)
+PARAMETERS['r1_burner_hysteresis']['description']=dict(fi='Poltin pysähtyy käynnistysrajan ja hystereesin summassa.',
+    en='Burner stops at the start threshold plus hysteresis.')
+PARAMETERS['valve_center_close'].update(label=dict(fi='Venttiilin keskisulku (alustava)',en='Valve center close (provisional)'),
+    documentation_status='unresolved')
+
 def get_metadata(key):
     """Return a detached metadata record; unknown keys raise KeyError."""
     from copy import deepcopy
