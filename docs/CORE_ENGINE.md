@@ -6,8 +6,27 @@ The protocol codec is separate from serial transport. The registry contains obse
 
 Schedule decoding preserves relative event order per circuit across blocks 4–7; this is deliberately conservative and does not establish controller precedence for simultaneous events. Validated schedule transitions are available only in the isolated bench restore.
 
-Acceptance gate: verify two independent full backups; manually reset isolated bench controller; preview complete restore plan; execute only validated transitions with durable journal and readback; compare configuration and schedule semantics; power cycle once; verify again. Unknown bytes and runtime measurements must never be copied blindly. Hardware tests on firmware 2.15 demonstrated readback success followed by loss of an automatically interpolated L2 point on reboot. An explicit ID66 write followed by reboot produced a zero-write plan. The exact internal storage mechanism remains a hypothesis. The revised engine explicitly writes both curve blocks after mode conversion, including unchanged payloads, and waits five seconds after writes. A new uninterrupted hardware acceptance run is pending.
+Acceptance gate: verify two independent full backups; manually reset isolated bench controller; preview complete restore plan; execute only validated transitions with durable journal and readback; compare configuration and schedule semantics; power cycle once; verify again. Unknown bytes and runtime measurements must never be copied blindly. Hardware tests on firmware 2.15 demonstrated readback success followed by loss of an automatically interpolated L2 point on reboot. An explicit ID66 write followed by reboot produced a zero-write plan. The exact internal storage mechanism remains a hypothesis. The revised engine explicitly writes both curve blocks after mode conversion, including unchanged payloads, and waits five seconds after writes. An uninterrupted hardware acceptance run succeeded on 2026-11-27.
 
 Journal status complete means readback only, not persistence. The persistence_verified flag remains false; an independent post-reboot full capture and zero-write plan are required. No automatic reboot or unknown writes are performed.
 
 Mode conversion now uses a five-second initial delay, followed by full monitored-state samples separated by two seconds, requiring ten seconds without observed changes within a 60-second sampling window. Only bounded intermediate Y changes in IDs 65/66 are allowed. Every sample is journaled; unexpected changes or timeout stop execution. Replanning must retain the exact approved ordered write payloads. The strict pre-write stale-state check remains unchanged. This is a sampled stability heuristic, not a firmware completion signal.
+
+## Physical acceptance — 2026-11-27
+
+The isolated EH-203 firmware 2.15 test restored the validated configuration from factory defaults in 16 verified writes. Four monitored samples remained identical over 11.59 seconds after the initial settling delay. Both curve blocks were explicitly written. A manual power cycle and full capture yielded a zero-write restore plan. The offline persistence verifier accepted the actual evidence; the operator subsequently reported 59 automated tests passing.
+
+Evidence identifiers (SHA-256):
+- Source records: `3233bfcb92ca9c07fdf92547956a5622c1033f57292e52d0b812677036dab909`
+- Reboot records: `f703c975c4fe9d7b2f1f7604f1811fd4a13e1f1ae6a05a9d7c0b36eabee6c36d`
+- Original journal file: `d4c9799ecb5a03551bd9aa5171b92c4fa15f1703185432f8b62fdd6a40464d05`
+
+## Offline persistence report
+
+```sh
+ouman-eh203 verify-persistence --source original.json \
+  --journal restore_journal_04.json --reboot final_reboot_04.json \
+  --output persistence_04.json --confirm-power-cycle
+```
+
+The original journal is not modified. The new report links the evidence by hashes, checks full captures, target identity, recorded writes and monitored state, and requires a zero-write plan. The power cycle is operator-attested, not independently detected. Reports are not signed. Acceptance is limited to the tested restore transitions and firmware 2.15; unknown parameters, GSM settings, other firmware and production deployment are not certified. No new hardware reset is required for offline verification.
