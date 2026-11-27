@@ -1,4 +1,4 @@
-"""Simulation-only restore. No physical transport accepted."""
+"""Validated restore engine with explicit isolated bench entry point."""
 from .backup import verify_file, known_fields, atomic_json
 from pathlib import Path
 import json
@@ -73,13 +73,11 @@ def build(source,before):
         raise ValueError('Unrestored schedule or digital dependency')
     return steps
 
-def execute_simulated(sim,source,steps,log,*,target_identity=None,allow_device_mismatch=False,allow_firmware_mismatch=False,journal_path=None):
-    if type(sim) is not SimulatedSerial:
-        raise TypeError('Simulation only')
+def _execute(sim,source,steps,log,*,target_identity=None,allow_device_mismatch=False,allow_firmware_mismatch=False,journal_path=None,settle=lambda:None):
     verify_file(source)
     def read():
         return {i:decode(exchange(sim,request(i)),i,len(block(source,i))) for i in IDS}
-    actual=decode(exchange(sim,request(1)),1,len(sim.blocks[1]))[:9]
+    actual=decode(exchange(sim,request(1)),1,len(bytes.fromhex(source['records']['1']['data'])))[:9]
     if actual!=(target_identity if target_identity is not None else block_identity(source)):
         raise ValueError('Target differs from approved identity')
     authorize(block_identity(source),actual,allow_device_mismatch,allow_firmware_mismatch)
@@ -99,7 +97,7 @@ def execute_simulated(sim,source,steps,log,*,target_identity=None,allow_device_m
         if journal is not None:
             atomic_json(journal_path,journal)
     for index,(pid,before,expected) in enumerate(steps):
-        if decode(exchange(sim,request(1)),1,len(sim.blocks[1]))[:9]!=actual:
+        if decode(exchange(sim,request(1)),1,len(bytes.fromhex(source['records']['1']['data'])))[:9]!=actual:
             raise ValueError('Target identity changed')
         if read()!=before:
             raise ValueError('Stale plan')
@@ -114,6 +112,7 @@ def execute_simulated(sim,source,steps,log,*,target_identity=None,allow_device_m
         entry['rx']=rx.hex()
         save()
         decode(rx,pid,0)
+        settle()
         observed=read()
         if observed!=expected:
             # Only accept a completed shared schedule pair, with no pending shared writes.
@@ -142,7 +141,7 @@ def recovery_preview(sim,source,journal_path,*,allow_device_mismatch=False,allow
     journal=json.loads(Path(journal_path).read_text())
     if journal.get('schema')!='ouman.eh203.restore-journal.v1' or journal.get('source_sha256')!=source['records_sha256']:
         raise ValueError('Journal/source mismatch')
-    actual=decode(exchange(sim,request(1)),1,len(sim.blocks[1]))[:9]
+    actual=decode(exchange(sim,request(1)),1,len(bytes.fromhex(source['records']['1']['data'])))[:9]
     if actual.hex()!=journal['target_identity']:
         raise ValueError('Recovery target mismatch')
     authorize(block_identity(source),actual,allow_device_mismatch,allow_firmware_mismatch)
@@ -150,3 +149,22 @@ def recovery_preview(sim,source,journal_path,*,allow_device_mismatch=False,allow
     # A partial schedule may be unsupported; fail closed rather than replay.
     return build(source,state)
 
+
+def execute_simulated(sim,source,steps,log,**kwargs):
+    if type(sim) is not SimulatedSerial:
+        raise TypeError('Simulation only')
+    return _execute(sim,source,steps,log,**kwargs)
+
+def execute_bench(port,source,current,log,*,journal_path,confirmation,allow_device_mismatch=False,allow_firmware_mismatch=False):
+    """Experimental physical restore, isolated controller only."""
+    from .transport import open_serial
+    import time
+    if confirmation!='BENCH' or journal_path is None:
+        raise ValueError('Isolated bench confirmation and journal required')
+    steps=plan(source,current,allow_device_mismatch=allow_device_mismatch,
+               allow_firmware_mismatch=allow_firmware_mismatch)
+    with open_serial(port) as ser:
+        return _execute(ser,source,steps,log,target_identity=block_identity(current),
+                        allow_device_mismatch=allow_device_mismatch,
+                        allow_firmware_mismatch=allow_firmware_mismatch,
+                        journal_path=journal_path,settle=lambda:time.sleep(1))
