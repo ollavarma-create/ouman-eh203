@@ -205,3 +205,24 @@ Capture basenames (JSON, local originals; not committed): baseline_01, baseline_
 ## 2026-11-27 relay captures
 
 Local JSON basenames: r1_timer_enabled, r1_renamed, r1_schedule, r1_continuous_on, r1_continuous_off, r1_timer_on_4m, r1_timer_off_7m, r1_timer_on_600m, r2_timer_on_600m, r2_schedule, r1_outdoor_control, r1_outdoor_minus7, r1_motor_control, r1_temperature_control, r1_temperature_63, r1_temperature_hysteresis7, r1_burner_control, r1_burner_83, r1_burner_hysteresis9 (IDs 0–127); r1_burner_extended (IDs 128–255, all rejected). See parameter map for observations. Raw files remain local; no new aggregate audit claimed.
+
+## Digital input research captures (2026-11-27)
+
+Local research filenames reported during the session (raw files not committed here; no new aggregate checksum manifest):
+
+- `digital_baseline.json`
+- `dig1_renamed.json`
+- `dig1_home_away.json`
+- `dig2_home_away.json`
+- `dig3_function.json`
+- `dig3_energy_pulse15.json`
+- `dig3_district_water.json`
+- `dig3_district_water100.json`
+- `dig3_water_consumption17.json`
+- `dig3_water_alarm_period30.json`
+- `dig1_pump.json`
+- `dig1_pump_indication_changed.json`
+- `dig1_pump_alarm_ack.json`
+- `dig1_pump_alarm_cleared.json`
+
+These cover function selection, naming, pulse scaling, monitoring interval, pump indication and alarm lifecycle. See parameter map for interpretation and limitations.
