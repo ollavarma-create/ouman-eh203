@@ -13,6 +13,7 @@ def main(command, argv=None):
         parser.add_argument('--source',type=Path,required=True)
         parser.add_argument('--confirm-factory-reset',action='store_true')
     else:
+        parser.add_argument('--reference',type=Path,help='Registered bench factory capture')
         parser.add_argument('--lang',choices=('fi','en'),default='fi')
         parser.add_argument('--key',choices=[f[0] for f in FIELDS])
     args=parser.parse_args(argv)
@@ -21,11 +22,15 @@ def main(command, argv=None):
             report=compare_defaults(json.loads(args.source.read_text(encoding='utf-8')),
                                     factory_reset_confirmed=args.confirm_factory_reset)
         else:
+            reference=None
+            if args.reference:
+                from .reference import factory_reference
+                reference=factory_reference(json.loads(args.reference.read_text(encoding='utf-8')))
             rows={}
             for key,pid,offset,width,signed,factor,unit in FIELDS:
                 if args.key and key!=args.key:
                     continue
-                meta=get_metadata(key)
+                meta=reference['fields'][key] if reference else get_metadata(key)
                 meta['display_label']=meta['label'][args.lang] or key
                 meta['protocol']=dict(id=pid,data_offset=offset,width=width,
                                       signed=signed,factor=factor,unit=unit)
