@@ -7,7 +7,7 @@ from .protocol import request, write_frame, decode
 from .transport import exchange
 from .simulator import SimulatedSerial
 from .validation import propose, block
-from .schedules import semantic_key
+from .schedules import semantic_key, equivalent_readback
 
 IDS=(4,5,6,7,8,9,12,13,14,16,17,43,44,47,65,66)
 ORDER=(65,66,12,13,16,43,44,14,47,4,6,8)
@@ -98,7 +98,7 @@ def execute_simulated(sim,source,steps,log,*,target_identity=None,allow_device_m
     def save():
         if journal is not None:
             atomic_json(journal_path,journal)
-    for pid,before,expected in steps:
+    for index,(pid,before,expected) in enumerate(steps):
         if decode(exchange(sim,request(1)),1,len(sim.blocks[1]))[:9]!=actual:
             raise ValueError('Target identity changed')
         if read()!=before:
@@ -114,11 +114,21 @@ def execute_simulated(sim,source,steps,log,*,target_identity=None,allow_device_m
         entry['rx']=rx.hex()
         save()
         decode(rx,pid,0)
-        if read()!=expected:
-            raise ValueError('Unexpected readback')
+        observed=read()
+        if observed!=expected:
+            # Only accept a completed shared schedule pair, with no pending shared writes.
+            if pid!=7 or any(p in (4,5,6,7) for p,_,_ in steps[index+1:]) or not equivalent_readback(observed,expected):
+                raise ValueError('Unexpected readback')
+            # Rebase remaining steps on the observed physical layout.
+            for _,b,e in steps[index+1:]:
+                for j in (4,5,6,7):
+                    b[j]=e[j]=observed[j]
+        entry['observed']={str(k):v.hex() for k,v in observed.items()}
         entry['status']='verified'
         save()
     result=read()
+    if build(source,result):
+        raise ValueError('Final state still requires restore')
     if journal is not None:
         journal['status']='complete'
         save()
