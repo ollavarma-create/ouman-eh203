@@ -6,8 +6,7 @@ from pathlib import Path
 from ouman_eh203.persistence import verify
 from ouman_eh203.restore import plan, execute_simulated
 from ouman_eh203.simulator import SimulatedSerial
-from ouman_eh203.backup import digest
-from ouman_eh203.protocol import request
+from ouman_eh203.backup import digest, exchange, verify_file
 
 ROOT=Path(__file__).parent/'fixtures'/'eh203_215'
 
@@ -23,14 +22,10 @@ class PersistenceTests(unittest.TestCase):
             self.journal=json.loads(p.read_text())
         sim.reboot()
         self.reboot=copy.deepcopy(self.source)
-        for k,r in self.reboot['records'].items():
-            if r['status']=='accepted':
-                pid=int(k)
-                sim.write(request(pid))
-                rx=sim.read(4096)
-                r['rx']=rx.hex()
-                r['data']=rx[5:-1].hex()
+        for k in self.reboot['records']:
+            self.reboot['records'][k]=exchange(sim,int(k))
         self.reboot['records_sha256']=digest(self.reboot['records'])
+        verify_file(self.reboot)
 
     def check(self):
         return verify(self.source,self.journal,self.reboot,power_cycle_confirmed=True)
