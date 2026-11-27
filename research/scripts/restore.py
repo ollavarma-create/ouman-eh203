@@ -57,11 +57,23 @@ def plan(source, current):
                 warning='All operations blocked. Experimental range match is not write authorization. Re-read after dependency changes. Unmapped bytes are never restored.')
 
 # Only these bytes may be patched. Other mapped fields remain blocked.
-BENCH_FIELDS = {12: ('l1_supply_max','l1_room_gain'),
-                13: ('l1_room_setpoint',),
-                14: (), 16: ('dhw_setpoint',)}
+BENCH_FIELDS = {12: ('l1_supply_max','l1_room_gain','l1_supply_min','l1_night_reduction','l1_parallel_shift','l1_autumn_drying','l1_outdoor_delay'),
+                13: ('l1_room_setpoint','l1_p_band','l1_i_time','l1_d_time','l1_actuator_time','l2_p_band','l2_i_time','l2_d_time','l2_actuator_time'),
+                14: ('l2_supply_min','l2_supply_max','l2_night_reduction','l2_parallel_shift','l2_autumn_drying','l2_outdoor_delay'), 16: ('dhw_setpoint','dhw_p_band','dhw_i_time','dhw_d_time','dhw_feedforward','dhw_fast_drive','dhw_alarm_delay','dhw_deviation_alarm')}
 BOUNDS = {'l1_supply_max': (15, 95), 'l1_room_gain': (0, 100),
           'l1_room_setpoint': (100, 300), 'dhw_setpoint': (500, 650)}
+
+# Experimental bounds, not manufacturer specifications.
+for prefix in ('l1','l2'):
+    for suffix, bounds in {'supply_min':(0,70),'supply_max':(15,95),
+        'night_reduction':(0,40),'parallel_shift':(-20,20),
+        'autumn_drying':(0,20),'outdoor_delay':(0,24),
+        'p_band':(1,500),'i_time':(0,1000),'d_time':(0,1000),
+        'actuator_time':(10,600)}.items():
+        BOUNDS[prefix+'_'+suffix]=bounds
+BOUNDS.update(dhw_p_band=(1,500),dhw_i_time=(0,1000),dhw_d_time=(0,1000),
+              dhw_feedforward=(0,500),dhw_fast_drive=(0,100),
+              dhw_alarm_delay=(0,360),dhw_deviation_alarm=(0,50))
 
 def block(snapshot, pid):
     raw = bytes.fromhex(snapshot['records'][str(pid)]['data'])
@@ -95,7 +107,7 @@ def propose(source, pid, before):
             if not low <= value <= high:
                 raise ValueError('Outside conservative bench bounds: '+name)
             modified[offset:offset+width] = target[offset:offset+width]
-        if pid==12 and modified[3]>modified[4]:
+        if pid in (12,14) and modified[3]>modified[4]:
             raise ValueError('Supply min exceeds max')
         expected[pid] = bytes(modified)
     return expected
@@ -179,7 +191,8 @@ def main(argv=None):
     m.add_argument('--dry-run',action='store_true')
     m.add_argument('--live-preview',action='store_true')
     m.add_argument('--execute-bench',action='store_true')
-    p.add_argument('--block',type=int,choices=(12,13,16,65,66))
+    p.add_argument('--block',type=int,choices=(12,13,14,16,65,66))
+    p.add_argument('--all',action='store_true')
     p.add_argument('--port',default='/dev/ttyUSB0')
     p.add_argument('--source',type=Path,required=True)
     p.add_argument('--current',type=Path)
@@ -189,10 +202,21 @@ def main(argv=None):
         if args.output.exists():
             raise FileExistsError('Output exists')
         if not args.dry_run:
-            if args.block is None or args.current is not None:
+            if (args.block is None) == (not args.all) or args.current is not None:
                 raise ValueError('Live mode requires --block and no --current')
-            return live(backup.load(args.source),args.block,args.output,args.port,args.execute_bench)
-        if args.current is None or args.block is not None:
+            source=backup.load(args.source)
+            if args.all:
+                ids=(65,66,12,13,14,16)
+                paths=[args.output.with_name(args.output.stem+'_id'+str(i)+'.json') for i in ids]
+                if any(p.exists() for p in paths):
+                    raise FileExistsError('Batch log already exists')
+                for i,path in zip(ids,paths):
+                    result=live(source,i,path,args.port,args.execute_bench)
+                    if result:
+                        return result
+                return 0
+            return live(source,args.block,args.output,args.port,args.execute_bench)
+        if args.current is None or args.block is not None or args.all:
             raise ValueError('Offline dry-run requires --current and no --block')
         result=plan(backup.load(args.source),backup.load(args.current))
         # Exclusive creation prevents accidental replacement of evidence.
