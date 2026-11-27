@@ -128,3 +128,7 @@ IDs 8/9, 14, 44, 45, 58 and 59 are documented in [PARAMETER_MAP.md](PARAMETER_MA
 ## Digital input and alarm response observations
 
 ID43 packs three digital input function nibbles (Dig1 low and Dig2 high nibble of data byte 1; Dig3 low nibble of byte 0). See PARAMETER_MAP.md for codes. In the pump alarm experiment ID43 response header changed 02 → 06 on alarm, then 02 on LCD acknowledgement while the alarm remained displayed, and stayed 02 after clearance. Do not interpret header bit 2 globally: IDs 96–101 returned 06 even after clearance. ID46 retained its timestamp after acknowledgement and clearance; its exact event semantics are unknown. Header values must not be used alone to infer active alarms.
+
+## Measurement 6 context-dependent decoding
+
+ID17 routing offsets 8/9/11/19 select L2 room/free temperature/wind/pressure respectively when set to 05. ID27 cannot be decoded as temperature unconditionally: pressure mode uses BE /100 bar; wind scaling unverified. ID54 candidate BE /1000 bar in pressure mode. ID47 offsets 0–3 pressure settings /10 bar. See PARAMETER_MAP.md for evidence and limitations. LCD changes do not validate serial writes.
