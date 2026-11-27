@@ -1,5 +1,8 @@
 """Simulation-only restore. No physical transport accepted."""
-from .backup import verify_file, known_fields
+from .backup import verify_file, known_fields, atomic_json
+from pathlib import Path
+import json
+import os
 from .protocol import request, write_frame, decode
 from .transport import exchange
 from .simulator import SimulatedSerial
@@ -70,7 +73,7 @@ def build(source,before):
         raise ValueError('Unrestored schedule or digital dependency')
     return steps
 
-def execute_simulated(sim,source,steps,log,*,target_identity=None,allow_device_mismatch=False,allow_firmware_mismatch=False):
+def execute_simulated(sim,source,steps,log,*,target_identity=None,allow_device_mismatch=False,allow_firmware_mismatch=False,journal_path=None):
     if type(sim) is not SimulatedSerial:
         raise TypeError('Simulation only')
     verify_file(source)
@@ -82,6 +85,19 @@ def execute_simulated(sim,source,steps,log,*,target_identity=None,allow_device_m
     authorize(block_identity(source),actual,allow_device_mismatch,allow_firmware_mismatch)
     if steps!=build(source,read()):
         raise ValueError('Stale or modified plan')
+    journal=None
+    if journal_path is not None:
+        journal_path=Path(journal_path)
+        journal=dict(schema='ouman.eh203.restore-journal.v1',source_sha256=source['records_sha256'],
+                     target_identity=actual.hex(),status='running',entries=[])
+        with journal_path.open('x') as f:
+            json.dump(journal,f)
+            f.flush()
+            os.fsync(f.fileno())
+        atomic_json(journal_path,journal)
+    def save():
+        if journal is not None:
+            atomic_json(journal_path,journal)
     for pid,before,expected in steps:
         if decode(exchange(sim,request(1)),1,len(sim.blocks[1]))[:9]!=actual:
             raise ValueError('Target identity changed')
@@ -89,10 +105,38 @@ def execute_simulated(sim,source,steps,log,*,target_identity=None,allow_device_m
             raise ValueError('Stale plan')
         entry={'id':pid,'status':'write_outcome_unknown','tx':write_frame(pid,expected[pid]).hex()}
         log.append(entry)
+        if journal is not None:
+            journal['entries'].append(entry)
+            entry['before']={str(k):v.hex() for k,v in before.items()}
+            entry['expected']={str(k):v.hex() for k,v in expected.items()}
+        save()
         rx=exchange(sim,bytes.fromhex(entry['tx']))
         entry['rx']=rx.hex()
+        save()
         decode(rx,pid,0)
         if read()!=expected:
             raise ValueError('Unexpected readback')
         entry['status']='verified'
-    return read()
+        save()
+    result=read()
+    if journal is not None:
+        journal['status']='complete'
+        save()
+    return result
+
+def recovery_preview(sim,source,journal_path,*,allow_device_mismatch=False,allow_firmware_mismatch=False):
+    """Read actual state, never replay a logged command. No writes."""
+    if type(sim) is not SimulatedSerial:
+        raise TypeError('Simulation only')
+    verify_file(source)
+    journal=json.loads(Path(journal_path).read_text())
+    if journal.get('schema')!='ouman.eh203.restore-journal.v1' or journal.get('source_sha256')!=source['records_sha256']:
+        raise ValueError('Journal/source mismatch')
+    actual=decode(exchange(sim,request(1)),1,len(sim.blocks[1]))[:9]
+    if actual.hex()!=journal['target_identity']:
+        raise ValueError('Recovery target mismatch')
+    authorize(block_identity(source),actual,allow_device_mismatch,allow_firmware_mismatch)
+    state={i:decode(exchange(sim,request(i)),i,len(block(source,i))) for i in IDS}
+    # A partial schedule may be unsupported; fail closed rather than replay.
+    return build(source,state)
+
