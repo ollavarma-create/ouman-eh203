@@ -250,3 +250,30 @@ Local capture filenames (not uploaded in this checkpoint):
 - `bus_wind.json`
 - `bus_solar.json`
 - `bus_solar_restored.json`
+
+## 2026-11-27 checkpoint: remaining settings, GSM and DHW boost
+
+Bench firmware 2.15, read-only captures. Data offsets exclude the two-byte response payload prefix.
+
+- Room temperature delay: ID12 offset20 and ID14 offset16 both 05 -> 0F for 0.5 -> 1.5 h; U8 /10 h, UI 0–2 h in 0.5 h steps. LCD synchronizes both copies; serial write synchronization untested.
+- Power limit: ID44 offsets5–6 U16BE, 03 E7 -> 01 41 for 999 -> 321 kW; UI 0–999 kW, step 1. Zero semantics unknown. Subsequently restored to 999.
+- GSM device ID: ID95 offset0 00 -> 01 enables ID; offsets1–4 ASCII four digits (1234 tested), preserve leading zeros; offsets5–10 ASCII EH-203 model designation, unchanged. SMS protocol role of model string unknown. GSM1 number accepted by long OK press, retained on menu reentry without GSM module, but no serial storage field identified. Editor accepts digits, + and comma. GSM2, maximum length and power-cycle persistence untested. Do not publish real phone numbers.
+- Finnish/Swedish language selection has no identified field in current read scan. Trend display is live data, not a portable setting.
+- ID16 offset4 DHW boost 00 -> 05, UI 0–25 °C; offset6 DHW high alarm 41 -> 48 (65 -> 72 °C), UI 65–120 °C. Adjacent preceding bytes at offsets3 and5 are zero; U16BE layout plausible but high-byte meaning unverified. Distinguish high alarm from deviation alarm at offsets23–24.
+- ID42 offset0 low nibble DHW operating mode: 00 auto, 04 mechanical manual, 05 electrical manual, 06 no boost, 07 continuous boost. Non-auto warning appeared on LCD; no reliable serial warning flag established. Auto restored in lv_schedule capture.
+- DHW boost schedule confirmed in shared heating table ID4/5 and ID6/7: with 14 existing L1/L2 events, ID6 offsets1–2 = 04 51 (1105 min, 18:25), offsets3–4 = 04 D3 (1235 min, 20:35); ID7 offsets0–1 = 15 2A (Mon/Wed/Fri and Tue/Thu/Sat), offsets14–15 = 12 22 (boost on/off). Event high nibble 1 on, 2 off; low nibble 0 L1, 1 L2, 2 DHW, 3 relay1, 4 relay2. Relay events observed in ID8/9. ID10/11 role and total capacity remain unconfirmed.
+- All eleven checkpoint captures contain 128 records, 72 accepted and 56 rejected each. All 2816 TX/RX frames passed STX, length, SUM8, ID echo and payload correspondence checks. This is structural validation, not proof of every semantic mapping.
+- No new serial writes validated. ESPHome/HA remains strictly read-only. Portable backup may represent identified persistent settings and schedules; restoration remains restricted to write-tested fields, preserving unknown bytes and excluding live operating overrides. Next open investigation: relay temperature-control hysteresis.
+
+Local capture filenames (not uploaded in this checkpoint):
+- `language_fi_restored.json`
+- `language_sv.json`
+- `room_delay_15.json`
+- `power_limit_321.json`
+- `gsm_device_id.json`
+- `gsm1_number.json`
+- `lv_boost_5.json`
+- `lv_alarm_72.json`
+- `lv_continuous_boost.json`
+- `lv_no_boost.json`
+- `lv_schedule.json`
