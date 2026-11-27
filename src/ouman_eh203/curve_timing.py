@@ -49,12 +49,25 @@ def main():
         def observe():
             t=time.monotonic()
             previous=None
+            stable_since=None
             while True:
-                state=snapshot()
+                try:
+                    state=snapshot()
+                except ValueError as exc:
+                    record(action='read_error',error=str(exc))
+                    previous=None
+                    stable_since=None
+                    if time.monotonic()-t>=60:
+                        raise ValueError('No valid final snapshot') from exc
+                    time.sleep(1)
+                    continue
                 if state!=previous:
+                    stable_since=time.monotonic()
                     print(round(time.monotonic()-t,2),{i:v[:9].hex(' ') for i,v in state.items()},flush=True)
                 previous=state
                 if time.monotonic()-t>=60:
+                    if time.monotonic()-stable_since<5:
+                        raise ValueError('Final state not stable for five seconds')
                     return state
                 time.sleep(1)
         if read(1,len(block(1)))[:9]!=block(1)[:9]:
