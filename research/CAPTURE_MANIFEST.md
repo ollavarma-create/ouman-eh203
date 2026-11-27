@@ -197,3 +197,7 @@ Additional captures: ouman_l1_motor160.json and ouman_l2_motor160.json (64 IDs e
 ## Backup and restore boundary
 
 Read-only raw snapshot of IDs 0–255 is feasible now. A portable configuration export must separately classify confirmed fields, mirrors, live values, identity and unknown data. Restore only independently write-tested allowlisted fields, with target snapshot, compatibility check, explicit diff/approval, read-modify-write, durable journal and full readback; never blindly replay raw blocks. Curve IDs 65/66 are canonical candidates; ID 65 Y3 mirror into ID 12 verified, other directions untested. General restore remains unvalidated. Next: operating modes, writer tests and staged bench restore.
+
+## 2026-11-27 LCD experiments (IDs 0–127)
+
+Capture basenames (JSON, local originals; not committed): baseline_01, baseline_02, l1_continuous_day, l1_auto_restored, l1_continuous_night, l1_down, l1_hand_mech, l1_hand_elec, l2_continuous_day, l2_continuous_night, l2_down, l2_hand_mech, l2_hand_elec, l1_day_l2_night, all_auto_restored, lv_hand_mech, lv_hand_elec, lv_hand_elec_50, lv_hand_elec_26, lv_hand_elec_min, lv_auto_restored, l1_schedule_mon, l1_schedule_multi, l1_schedule_daymask, l2_schedule, schedule_capacity, schedule_delete, schedule_pair_delete. See parameter map and research status for observations. A fresh aggregate audit is pending; no new test-suite result claimed.
