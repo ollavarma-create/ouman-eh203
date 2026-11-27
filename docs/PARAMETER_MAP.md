@@ -218,3 +218,22 @@ ID43 (0x2B), two data bytes: Dig1 = offset 1 low nibble; Dig2 = offset 1 high ni
 Offsets are zero-based after the echoed ID. Observed byte changes establish scaling, not necessarily full field width. Preserve adjacent unknown bytes. Inactive pulse settings persist across function changes. ID17 offset 17 changed 63 to 02 in energy mode and back in district water mode; offset 18 changed 63 to 02 in consumption mode. Exact semantics remain unknown.
 
 Pump alarm experiment: changing indication to running status with open input triggered LCD alarm and buzzer; OK silenced buzzer but LCD alarm remained; reverting indication removed LCD alarm. ID43 header 02 → 06 → 02 → 02. Bit 2 is a candidate unacknowledged-alarm indicator for this response, not a global alarm flag. IDs 96–101 still returned 06 after LCD alarm cleared. ID46 retained timestamp 2026-11-27 11:50:01 after acknowledgement and clearance; history interpretation remains provisional. Physical input states, polarity, names, pulse counters and active alarm encoding remain unresolved. Read mapping only; no new write validation.
+
+## Measurement 6 and pressure (firmware 2.15, 2026-11-27)
+
+ID17 appears to be a measurement routing table: data byte value 05 selects physical input 6 (inferred zero-based numbering); 0C appears unassigned. LCD selection moves 05 between offsets 8 (L2 room), 9 (free temperature measurement, factory cold water), 11 (wind compensation), 19 (network pressure). Other tested routing slots revert to 0C. Disabled selection not independently tested in this series. Renaming free measurement to VESI did not expose a matching ASCII payload. ID27 is context-dependent: temperature mode uses S16BE /100 °C with disconnected sentinel 865A; wind mode returned 26FC (9980), percentage scaling remains candidate only; pressure mode uses two-byte BE /100 bar, observed 0320 = 8.00 and 0258 = 6.00. In L2 room mode with disconnected sensor, ID15 offsets 16/23/26 changed to 4A/CC/46; final L2 target rose from 48 to 70°C and returned to 48 on switching to free temperature. Exact correction semantics remain provisional.
+
+| ID (decimal) | Data offset | Meaning | Observed encoding |
+|---|---:|---|---|
+| 12 | 15 | Compensation/measurement signal minimum | U8 %, 00→0D |
+| 12 | 16 | Compensation/measurement signal maximum | U8 %, 64→57 |
+| 14 | 11 | Same minimum, synchronized by LCD | U8 %, 00→0D |
+| 14 | 12 | Same maximum, synchronized by LCD | U8 %, 64→57 |
+| 47 | 0 | Pressure measurement range | U8 /10 bar, 50→3C |
+| 47 | 1 | Upper pressure alarm | U8 /10 bar, 16→23 |
+| 47 | 2 | Filling alarm | U8 /10 bar, 07→0D |
+| 47 | 3 | Lower pressure alarm | U8 /10 bar, 05→09 |
+
+Offsets zero-based after echoed ID. Pressure settings changed individually on LCD: 8.0→6.0, 2.2→3.5, 0.7→1.3, 0.5→0.9 bar. ID47 offset 4 remains 1E (30 min consumption interval). Wind min/max restored to 0/100 before pressure test. Serial synchronization of duplicated min/max fields not tested.
+
+ID54 offset 0–1 BE /1000 bar is a candidate second pressure value: 1F40→1A90→1770 (8.000→6.800→6.000) while ID27 0320→02C6→0258 (8.00→7.10→6.00). Different response times suggest filtering, but scans are sequential, not simultaneous; exact semantics, signedness and physical calibration are unverified. Disconnected bench input reported full-scale pressure and triggered LCD upper alarm; do not interpret this as a real pressure measurement. Header 06 observed but not a reliable global alarm flag. No serial writes tested for these fields.
