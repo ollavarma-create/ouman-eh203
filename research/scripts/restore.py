@@ -86,6 +86,10 @@ BOUNDS.update(district_water_pulse=(0,100),consumption_water_pulse=(0,17),energy
 # ID47 is short; use the verified source length, not a 31-byte assumption.
 def block(snapshot, pid):
     raw = bytes.fromhex(snapshot['records'][str(pid)]['data'])
+    if (pid in (96,98,99)):
+        if len(raw)!=(1 if pid==96 else 182):
+            raise ValueError('Unexpected GSM block size')
+        return raw
     if (pid == 43 and len(raw)!=2) or (pid not in (43,47) and len(raw)!=31) or (pid == 47 and not 7 <= len(raw) <= 31):
         raise ValueError('Unexpected block size')
     return raw
@@ -142,6 +146,12 @@ def propose(source, pid, before):
         expected[other]=events[:28]+before[other][28:]
         if schedule_equal(before,expected,pid):
             return dict(before)
+    elif pid == 95:
+        if old[5:]!=target[5:] or target[0]!=1 or not target[1:5].isdigit():
+            raise ValueError('Unexpected GSM identity layout')
+        if old[:5]!=target[:5] and old[:5]!=b'\x000000':
+            raise ValueError('GSM identity transition outside bench proposal')
+        expected[pid]=target[:5]+old[5:]
     elif pid == 43:
         codes=(target[1]&15,target[1]>>4,target[0]&15)
         if any(c>6 for c in codes) or codes.count(2)>1:
@@ -239,6 +249,8 @@ def live(source, pid, path, port, execute):
     if source.get('profile') or {int(k) for k,v in source['records'].items() if v['status']=='accepted'} != set(backup.QUICK_IDS):
         raise ValueError('Verified full source required')
     ids = (4,5,6,7,8,9,12,13,14,16,44,47,65,66) if pid in (4,6,8) else (12,13,14,16,17,43,44,47,65,66)
+    if pid == 95:
+        ids = ids + (95,96,98,99)
     record = dict(schema='ouman.eh203.block-restore.v1', source_sha256=source['records_sha256'],
                   id=pid, status='started', created_at=backup.utc(), frames=[])
     with path.open('x') as f:
@@ -297,6 +309,10 @@ def live(source, pid, path, port, execute):
                 return 0
             if not execute:
                 return 0
+            if pid == 95:
+                if input('GSM modem disconnected. Type GSM: ')!='GSM':
+                    record['status']='cancelled'
+                    return 1
             if pid == 17:
                 raise ValueError('Routing writes blocked pending full dependency mapping')
             if input('Isolated bench, no connected loads. Type BENCH: ')!='BENCH':
@@ -342,7 +358,7 @@ def main(argv=None):
     m.add_argument('--dry-run',action='store_true')
     m.add_argument('--live-preview',action='store_true')
     m.add_argument('--execute-bench',action='store_true')
-    p.add_argument('--block',type=int,choices=(4,6,8,12,13,14,16,17,43,44,47,65,66))
+    p.add_argument('--block',type=int,choices=(4,6,8,12,13,14,16,17,43,44,47,65,66,95))
     p.add_argument('--all',action='store_true')
     p.add_argument('--port',default='/dev/ttyUSB0')
     p.add_argument('--source',type=Path,required=True)
