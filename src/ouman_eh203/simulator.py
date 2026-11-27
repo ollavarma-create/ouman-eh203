@@ -85,10 +85,16 @@ class SimulatedSerial:
                 updated[mirror]=bytes(data[i] for i in (1,3,5))+updated[mirror][3:]
             else:
                 return False
-        elif pid==12 and changes=={20} and old[20]==5 and data[20]==15:
-            b=bytearray(updated[14]); b[16]=15; updated[14]=bytes(b)
+        elif pid==12 and changes<= {4,7,20} and (20 not in changes or (old[20],data[20])==(5,15)):
+            b=bytearray(updated[14]); b[16]=data[20]; updated[14]=bytes(b)
         elif pid==43 and old==bytes(2) and data==bytes((4,0)) and updated[17][17]==99:
             b=bytearray(updated[17]); b[17]=2; updated[17]=bytes(b)
+        elif pid in (13,14,16,44,47) and changes <= {13:{2},14:{25,26},16:{4,6},44:{2,4,10,15,18,27},47:set(range(5))}[pid]:
+            pass
+        elif pid in (4,6,8) and changes<=set(range(1,29)):
+            pass
+        elif pid in (5,7,9) and changes<=set(range(28)):
+            pass
         else:
             return False
         updated[pid]=data
