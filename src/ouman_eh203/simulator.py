@@ -9,6 +9,7 @@ class SimulatedSerial:
         self.writes = []
         self.fault = None
         self.relocate_schedules = False
+        self.recalculate_curves = False
 
     @classmethod
     def from_backups(cls, original, factory):
@@ -99,6 +100,12 @@ class SimulatedSerial:
         else:
             return False
         updated[pid]=data
+        if pid==65 and changes=={0} and self.recalculate_curves:
+            for j in (65,66):
+                b=bytearray(updated[j])
+                b[2]=(b[1]+b[3])//2
+                b[4]=(b[3]+b[5])//2
+                updated[j]=bytes(b)
         if pid==7 and self.relocate_schedules:
             from .schedules import relocate_shared
             updated=relocate_shared(updated)
