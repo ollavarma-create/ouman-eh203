@@ -1,8 +1,8 @@
 # Ouman EH-203 native serial protocol — independent research
 
-An experimental, **unofficial** reverse-engineering project for the Ouman EH-203 heating controller (tested on firmware **2.15**). The goal is to preserve reproducible evidence, build read-only diagnostics, and eventually support strictly read-only ESPHome/Home Assistant. A possible settings backup/restore tool is a **future research objective**, not an implemented feature.
+An experimental, **unofficial** reverse-engineering project for the Ouman EH-203 heating controller (tested on firmware **2.15**). The goal is to preserve reproducible evidence, build read-only diagnostics, and eventually support strictly read-only ESPHome/Home Assistant. A Python backup and selective bench restore core is implemented; it is not a general-purpose production controller editor.
 
-**Project status (2026-11-27):** Native RS-232 **4800 8N1** read requests and checksums are known; many temperature measurements and configuration fields are mapped by controlled LCD-setting experiments. **A single clock write (ID 2, command 0x82) has been verified on the bench with readback.** ID 13 L1 room setpoint write, full-block readback, LCD confirmation and operator-confirmed power-cycle persistence are also established. Bench writes also verified for L1 gain, curve Y3/X2 and DHW setpoint; general restore remains experimental. Operating modes, DHW command percentage and weekly schedule read layouts are now mapped.
+**Earlier research status (2026-11-27):** Native RS-232 **4800 8N1** read requests and checksums are known; many temperature measurements and configuration fields are mapped by controlled LCD-setting experiments. **A single clock write (ID 2, command 0x82) has been verified on the bench with readback.** ID 13 L1 room setpoint write, full-block readback, LCD confirmation and operator-confirmed power-cycle persistence are also established. Bench writes also verified for L1 gain, curve Y3/X2 and DHW setpoint; general restore remains experimental. Operating modes, DHW command percentage and weekly schedule read layouts are now mapped.
 
 Start with:
 - [Research status and next experiment](docs/RESEARCH_STATUS.md)
@@ -13,6 +13,28 @@ Start with:
 - [Capture inventory](research/CAPTURE_MANIFEST.md)
 
 A simple read-only Python scanner is in [research/scripts/scan.py](research/scripts/scan.py). It requires `pyserial` and does not change settings.
+
+## Current core alpha (0.1.0a1)
+
+See [Core engine](docs/CORE_ENGINE.md) and [Backup workflow](docs/BACKUP.md).
+The core captures all 256 IDs, validates independent backups, exports 82 decoded
+parameters, and supports a restricted bench restore with journal and reboot
+verification. One physical firmware 2.15 acceptance run completed 16 writes
+and required zero further planned writes after reboot. The user reported 91
+passing tests. Factory comparison: 53 matches, zero differences, 29 without
+documented defaults. Bilingual metadata remains partial; a full semantic
+manual audit is outstanding.
+
+```sh
+python -m pip install -e .
+python -m unittest discover -s tests -v
+ouman-eh203 --help
+ouman-eh203 metadata --lang fi
+```
+
+ESPHome/Home Assistant remains read-only. No production restore or GUI is
+released. The research checkpoints below are historical, not current feature
+status.
 
 ## Important boundaries
 
@@ -85,3 +107,7 @@ Bench firmware 2.15. Relay temperature-control hysteresis changed from 1 to 10 �
 - Structural revalidation of four JSONL sweeps and 14 single probes: 4310 TX/RX frames, zero STX/length/SUM8 failures. Post-command-sweep scan compared to reboot scan: only IDs 2,3,25,36,38,46 payloads changed; no observed persistent setting change in that comparison, not proof of absence of side effects.
 - Open hypothesis: event flags or queue may be consumed by traffic; initial 81 controls could influence subsequent probes. Original MODBUS-200/EH-485 accessory may use a different transaction sequence or active protocol translation between controller-side serial interface and external RS-485 bus. Not verified; RS-485 electrical signaling alone does not establish Modbus framing on the controller side. Future work: passive capture on verified electrical interfaces of original accessory, compare both sides, no injection on production bus.
 - Production ESPHome/HA and backup acquisition use canonical 81 only. No reliable alarm-state sensor yet. Unknown opcodes and aliases remain bench-only; no new write fields approved. Next implementation: raw backup and portable known-settings representation, followed by guarded restore using existing write-tested allowlist, preserving unknown bytes and excluding identity/live state. Unknown alarm commands and hysteresis mapping are not blockers.
+
+## Read-only full ID backup prototype
+
+The new [`backup.py`](research/scripts/backup.py) performs a canonical `0x81` capture of IDs 0–255, saves every raw response durably, checks framing/SUM8/identity, exports a conservative subset of LCD-confirmed settings into structured JSON, and compares two independent captures. It never writes controller settings and is not a general restore solution. **Do not factory-reset until the complete backup and an independent second sweep have been reviewed.** Follow [the bench workflow](docs/BACKUP.md). Keep captures private (`backup-captures/` is gitignored).
