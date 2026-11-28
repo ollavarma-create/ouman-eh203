@@ -104,6 +104,7 @@ class Window(QMainWindow):
         self.mode = QComboBox()
         self.mode.addItems(["Simulator", "Serial port", "Backup simulator"])
         self.snapshot = None
+        self.snapshot_sim = None
         self.snapshot_path = ""
         self.snapshot_button = QPushButton()
         self.snapshot_button.clicked.connect(self.choose_snapshot)
@@ -155,6 +156,7 @@ class Window(QMainWindow):
             self.backup_status.setWordWrap(True)
             box.addWidget(self.backup_status)
             self.offline = OfflinePage(self.monitor.open_help)
+            self.offline.restore_callback = self.open_restore
             box.addWidget(self.offline, 1)
             self.tabs.addTab(page, "")
         self.curves = CurvePage(self.monitor.open_help)
@@ -181,7 +183,7 @@ class Window(QMainWindow):
         self.snapshot_path = ""
         try:
             snapshot = load(path)
-            SimulatedSerial.from_snapshot(snapshot)
+            self.snapshot_sim = SimulatedSerial.from_snapshot(snapshot)
         except (OSError, ValueError, TypeError, KeyError, AttributeError, IndexError) as exc:
             self.reset_status()
             self.status.setText(("Virhe: " if self.language.currentText()=="fi" else "Error: ")+str(exc))
@@ -192,14 +194,28 @@ class Window(QMainWindow):
         return True
 
     def snapshot_factory(self):
-        snapshot = self.snapshot
-        return (lambda: SimulatedSerial.from_snapshot(snapshot)) if self.mode.currentIndex()==2 and snapshot is not None else None
+        sim = self.snapshot_sim
+        return (lambda: sim) if self.mode.currentIndex()==2 and self.snapshot is not None else None
+
+    def open_restore(self):
+        if self.session is not None or self.worker is not None or self.backup_worker is not None:
+            return
+        from PySide6.QtWidgets import QMessageBox
+        from .restore_gui import RestoreDialog
+        mode = self.mode.currentIndex()
+        if mode == 0 or (mode == 2 and self.snapshot is None):
+            QMessageBox.information(self,self.windowTitle(), 'Valitse sarjaportti tai lataa simulaattorin varmuuskopio.' if self.language.currentText()=='fi' else 'Select serial port or load a simulator backup.')
+            return
+        dialog = RestoreDialog(None,self.language.currentText(),self,port=self.port.text().strip(),sim=self.snapshot_sim if mode==2 else None)
+        dialog.exec()
+        dialog.deleteLater()
 
     def backup_enabled(self):
         idle = self.session is None and self.worker is None and self.backup_worker is None
         selected = self.mode.currentIndex() == 2
         ready = not selected or self.snapshot is not None
         self.backup_button.setEnabled(self.mode.currentIndex() == 1 and idle)
+        self.offline.restore_button.setEnabled(idle)
         self.snapshot_button.setEnabled(selected and idle)
         self.connect_button.setEnabled(idle and ready)
         self.live_button.setEnabled(self.session is not None or (idle and ready))
