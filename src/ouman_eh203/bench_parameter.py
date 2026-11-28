@@ -7,7 +7,7 @@ import time
 from .backup import acquire, verify_file, load, atomic_json, utc
 from .metadata import PARAMETERS
 from .registry import FIELDS, QUICK_IDS
-from .validation import BOUNDS, BENCH_FIELDS, block
+from .validation import BOUNDS, BENCH_FIELDS, block, apply_shift_mirror
 from .restore import IDS, authorize, block_identity
 from .protocol import request, write_frame, decode
 from .transport import exchange, open_serial
@@ -171,27 +171,17 @@ def draft_preview(snapshot, values):
         data = target[pid]
         target[pid] = data[:offset]+int(raw).to_bytes(width,'big',signed=signed)+data[offset+width:]
         changes.append((key, old, value))
-    # Physical ID12 capture confirms the signed shift is mirrored to ID65[9].
-    # ID14 -> ID66[9] is the corresponding experimental prediction; exact
-    # readback is required, not a blanket exception for curve blocks.
-    mirrors = {12: (27, 65), 14: (23, 66)}
     for pid, circuit in ((12, 'L1'), (14, 'L2')):
         if target[pid] != state[pid] and target[pid][3] > target[pid][4]:
             raise ValueError(circuit + ': Supply minimum exceeds maximum')
-        offset, mirror = mirrors[pid]
-        if target[pid][offset] != state[pid][offset]:
-            if state[mirror][9] != state[pid][offset]:
-                raise ValueError(circuit + ': Initial parallel shift mirror mismatch')
-            target[mirror] = state[mirror][:9] + target[pid][offset:offset+1] + state[mirror][10:]
+        apply_shift_mirror(pid, state, target)
     current = dict(state)
     steps = []
     for pid in (12, 13, 16, 14):
         if current[pid] != target[pid]:
             expected = dict(current)
             expected[pid] = target[pid]
-            if pid in mirrors:
-                _, mirror = mirrors[pid]
-                expected[mirror] = target[mirror]
+            apply_shift_mirror(pid, current, expected)
             steps.append((pid, tuple(current.items()), tuple(expected.items())))
             current = expected
     return Draft(identity, len(bytes.fromhex(snapshot['records']['1']['data'])),
