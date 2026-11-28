@@ -141,6 +141,7 @@ class Window(QMainWindow):
             self.backup_button = QPushButton()
             self.backup_button.clicked.connect(self.start_backup)
             box.addWidget(self.backup_button)
+            self.backup_result = None
             self.backup_status = QLabel()
             self.backup_status.setWordWrap(True)
             box.addWidget(self.backup_status)
@@ -170,7 +171,7 @@ class Window(QMainWindow):
         if not path:
             return
         if Path(path).exists():
-            self.backup_status.setText(('Tiedosto on jo olemassa; valitse uusi nimi: ' if fi else 'File already exists; choose a new name: ') + path)
+            self.backup_outcome('exists', path)
             return
         self.backup_worker = BackupWorker(self.port.text().strip(), path, self)
         self.backup_dialog = QProgressDialog("Luetaan 256 parametria" if fi else "Reading 256 parameters",
@@ -193,8 +194,16 @@ class Window(QMainWindow):
             self.backup_dialog.setValue(count)
 
     def backup_outcome(self, state, detail):
+        self.backup_result = (state, detail)
+        self.translate_backup_status()
+
+    def translate_backup_status(self):
+        if self.backup_result is None:
+            return
+        state, detail = self.backup_result
         fi = self.language.currentText() == "fi"
-        labels = {"verified": ("Raakakaappaus varmennettu", "Raw capture verified"),
+        labels = {"exists": ("Tiedosto on jo olemassa; valitse uusi nimi", "File already exists; choose a new name"),
+                  "verified": ("Raakakaappaus varmennettu", "Raw capture verified"),
                   "partial": ("Keskeneräinen kaappaus", "Incomplete capture"),
                   "error": ("Virhe; mahdollinen osittainen tiedosto", "Error; partial file may exist")}
         self.backup_status.setText(labels[state][0 if fi else 1] + ": " + detail)
@@ -307,6 +316,7 @@ class Window(QMainWindow):
         self.tabs.setTabText(2, 'Lämmityskäyrät' if lang == 'fi' else 'Heating curves')
         self.config.setText('Katkaise käytönvalvontayhteys ennen varmuuskopiointia. Raakakaappaus ei takaa kaikkien asetusten palautettavuutta.' if lang == 'fi' else 'Disconnect monitoring before backup. Raw capture does not guarantee restoration of every setting.')
         self.offline.translate(lang)
+        self.translate_backup_status()
         self.backup_button.setText('Ota varmuuskopio' if lang == 'fi' else 'Create backup')
         self.backup_enabled()
         if self.worker is None:
