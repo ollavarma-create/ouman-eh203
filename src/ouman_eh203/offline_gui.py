@@ -17,6 +17,8 @@ class OfflinePage(QWidget):
         self.help_callback = help_callback
         self.restore_callback = None
         self.editable_callback = None
+        self.simulation = None
+        self.simulation_open = None
         layout = QVBoxLayout(self)
         bar = QHBoxLayout()
         self.open_button = QPushButton()
@@ -65,9 +67,10 @@ class OfflinePage(QWidget):
     def choose(self):
         path,_ = QFileDialog.getOpenFileName(self,self.tr2("Avaa varmuuskopio","Open backup"),"","JSON (*.json)")
         if path:
-            self.open_path(path)
+            self.simulation_open(path) if self.simulation_open else self.open_path(path)
 
     def open_path(self,path):
+        self.simulation = None
         self.second = self.report = None
         self.second_path = ''
         self.snapshot = None
@@ -75,6 +78,8 @@ class OfflinePage(QWidget):
         self.path = ""
         try:
             snapshot = load(path)
+            if snapshot.get("schema") == "ouman.eh203.scenario.v1":
+                raise ValueError(self.tr2("Simulaatiotiedosto; avaa simulaattoritilassa.","Simulation file; open in simulator mode."))
             fields = known_fields(snapshot)["fields"]
         except (OSError,ValueError,KeyError,TypeError,AttributeError,IndexError) as exc:
             self.populate()
@@ -112,7 +117,7 @@ class OfflinePage(QWidget):
         return True
 
     def populate_comparison(self):
-        self.compare_button.setEnabled(self.snapshot is not None)
+        self.compare_button.setEnabled(self.snapshot is not None and self.simulation is None)
         self.restore_button.setEnabled(True)
         self.only_changes.setEnabled(self.report is not None)
         self.diff.setColumnCount(6)
@@ -160,6 +165,20 @@ class OfflinePage(QWidget):
         self.only_changes.setText(self.tr2("Näytä vain muuttuneet asetukset","Show changed settings only"))
         self.populate()
 
+    def show_simulation(self, source, sim, path):
+        self.simulation = sim
+        self.snapshot = source
+        self.path = str(path)
+        self.fields = known_fields(source)['fields']
+        from .registry import FIELDS
+        from decimal import Decimal
+        for key,pid,offset,width,signed,factor,unit in FIELDS:
+            raw = int.from_bytes(sim.blocks[pid][offset:offset+width], 'big', signed=signed)
+            self.fields[key]['value'] = str(Decimal(raw)*Decimal(factor))
+        self.second = self.report = None
+        self.second_path = ''
+        self.populate()
+
     def populate(self):
         headers = self.tr2(["Ryhmä","Parametri","Arvo","Yksikkö","Dokumentoitu oletus","Avain"],["Group","Parameter","Value","Unit","Documented default","Key"])
         self.table.setColumnCount(len(headers))
@@ -182,10 +201,14 @@ class OfflinePage(QWidget):
         self.raw.setRowCount(len(records))
         for row,pid in enumerate(sorted(records,key=int)):
             rec = records[pid]
-            for col,value in enumerate((pid,rec["status"],rec["data"] or "—",rec["rx"])):
+            data = self.simulation.blocks.get(int(pid)) if self.simulation is not None else None
+            values = (pid,rec["status"],data.hex(" ").upper() if data is not None else rec["data"] or "—", "—" if self.simulation is not None else rec["rx"])
+            for col,value in enumerate(values):
                 self.raw.setItem(row,col,QTableWidgetItem(str(value)))
         self.status.setText(self.tr2("Ei avattua varmuuskopiota","No backup loaded") if not self.snapshot else
             self.tr2("Varmennettu offline-kaappaus","Verified offline capture")+" · EH-203 / 2.15 · "+str(self.snapshot.get("created_at",""))+" · "+self.path)
+        if self.simulation is not None:
+            self.status.setText(self.tr2("Simulaattorin nykyiset asetukset – ei laitevarmuuskopio","Current simulator settings – not a device backup"))
         self.populate_comparison()
 
     def mark_editable(self):
@@ -197,7 +220,7 @@ class OfflinePage(QWidget):
                 continue
             name = PARAMETERS[key.text()]['label'].get(self.lang) or key.text()
             label.setText(('✎ ' if key.text() in keys else '') + name)
-            label.setToolTip(self.tr2('Varmuuskopion arvo; kaksoisnapsauta muokataksesi simulaattorin arvoa.','Backup value; double-click to edit the simulator value.') if key.text() in keys else key.text())
+            label.setToolTip(self.tr2('Simulaattorin arvo; kaksoisnapsauta muokataksesi.','Simulator value; double-click to edit.') if key.text() in keys else key.text())
 
     def filter(self,*_):
         query = self.search.text().casefold()
