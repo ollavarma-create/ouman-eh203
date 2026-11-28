@@ -1,7 +1,8 @@
 """Desktop foundation. Only canonical identity reads are exposed."""
 import sys
 from serial.tools.list_ports import comports
-from pathlib import PurePath
+from pathlib import PurePath, Path
+from .offline_gui import OfflinePage
 from threading import Event
 from .backup import acquire, verify_file
 from .monitoring import OperationManager
@@ -143,7 +144,8 @@ class Window(QMainWindow):
             self.backup_status = QLabel()
             self.backup_status.setWordWrap(True)
             box.addWidget(self.backup_status)
-            box.addStretch()
+            self.offline = OfflinePage(self.monitor.open_help)
+            box.addWidget(self.offline, 1)
             self.tabs.addTab(page, "")
         self.curves = CurvePage(self.monitor.open_help)
         self.tabs.addTab(self.curves, '')
@@ -164,8 +166,11 @@ class Window(QMainWindow):
             return
         fi = self.language.currentText() == "fi"
         path, _ = QFileDialog.getSaveFileName(self, "Varmuuskopio" if fi else "Backup",
-                                              "eh203-backup.json", "JSON (*.json)")
+                                              "eh203-backup.json", "JSON (*.json)", options=QFileDialog.Option.DontConfirmOverwrite)
         if not path:
+            return
+        if Path(path).exists():
+            self.backup_status.setText(('Tiedosto on jo olemassa; valitse uusi nimi: ' if fi else 'File already exists; choose a new name: ') + path)
             return
         self.backup_worker = BackupWorker(self.port.text().strip(), path, self)
         self.backup_dialog = QProgressDialog("Luetaan 256 parametria" if fi else "Reading 256 parameters",
@@ -301,6 +306,7 @@ class Window(QMainWindow):
         self.curves.translate(lang)
         self.tabs.setTabText(2, 'Lämmityskäyrät' if lang == 'fi' else 'Heating curves')
         self.config.setText('Katkaise käytönvalvontayhteys ennen varmuuskopiointia. Raakakaappaus ei takaa kaikkien asetusten palautettavuutta.' if lang == 'fi' else 'Disconnect monitoring before backup. Raw capture does not guarantee restoration of every setting.')
+        self.offline.translate(lang)
         self.backup_button.setText('Ota varmuuskopio' if lang == 'fi' else 'Create backup')
         self.backup_enabled()
         if self.worker is None:
