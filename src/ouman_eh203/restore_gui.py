@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (QDialog,QVBoxLayout,QPushButton,QLabel,QFileDialog,
-    QTableWidget,QTableWidgetItem,QAbstractItemView,QMessageBox,QCheckBox)
+    QTableWidget,QTableWidgetItem,QAbstractItemView,QMessageBox,QCheckBox,QInputDialog)
 from .backup import load, acquire, verify_file
-from .restore import plan, execute_simulated, block_identity
+from .restore import plan, execute_simulated, execute_bench, block_identity
 from .transport import open_serial
 from PySide6.QtCore import QThread, Signal, QStandardPaths
 from pathlib import Path
@@ -16,10 +16,19 @@ class RestoreWorker(QThread):
         self.port, self.sim, self.path = port, sim, path
         self.source, self.target, self.steps = source, target, steps
         self.cancel = Event()
+        self.safety_path = None
+        self.bench_confirmation = None
     def run(self):
         try:
             if self.steps is not None:
-                execute_simulated(self.sim, self.source, self.steps, [], target_identity=block_identity(self.target), allow_device_mismatch=True, journal_path=self.path)
+                if self.sim is None:
+                    current = load(self.safety_path)
+                    verify_file(current)
+                    if current != self.target or plan(self.source,current,allow_device_mismatch=True) != self.steps:
+                        raise ValueError('Safety backup or approved plan changed')
+                    execute_bench(self.port,self.source,current,[],journal_path=self.path,confirmation=self.bench_confirmation,allow_device_mismatch=True)
+                else:
+                    execute_simulated(self.sim, self.source, self.steps, [], target_identity=block_identity(self.target), allow_device_mismatch=True, journal_path=self.path)
                 self.outcome.emit(True, str(self.path))
                 return
             ser = self.sim if self.sim is not None else open_serial(self.port)
@@ -31,7 +40,7 @@ class RestoreWorker(QThread):
                     ser.close()
             self.outcome.emit(result, str(self.path))
         except Exception as exc:
-            self.outcome.emit(None, str(exc))
+            self.outcome.emit(None, str(exc) + (' | Journal: ' + str(self.path) if self.steps is not None else ''))
 from .restore_preview import preview
 from .metadata import PARAMETERS
 
@@ -43,6 +52,7 @@ class RestoreDialog(QDialog):
         self.worker = None
         self.target = None
         self.approved_steps = None
+        self.safety_path = None
         self.directory = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)) / 'restore-safety'
         self.directory.mkdir(parents=True, exist_ok=True)
         self.source_path = ''
@@ -83,7 +93,7 @@ class RestoreDialog(QDialog):
             ["Parametri","Kohde nyt","Palautettava","Yksikkö","Tila"],
             ["Parameter","Target now","Desired","Unit","Status"]))
         layout.addWidget(self.table)
-        self.apply_button = QPushButton(self.tr2('Palauta simulaattoriin','Restore to simulator'))
+        self.apply_button = QPushButton((self.tr2('Palauta simulaattoriin','Restore to simulator') if sim is not None else self.tr2('Palauta testilaitteeseen','Restore to bench controller')))
         self.apply_button.setEnabled(False)
         self.apply_button.clicked.connect(self.apply_restore)
         layout.addWidget(self.apply_button)
@@ -150,28 +160,39 @@ class RestoreDialog(QDialog):
         self.worker = None
         self.source_button.setEnabled(True)
         self.choose.setEnabled(self.source is not None)
-        self.apply_button.setEnabled(self.sim is not None and bool(self.approved_steps))
+        self.apply_button.setEnabled(bool(self.approved_steps))
 
     def capture_done(self, result, detail):
         if result is None:
             self.status.setText(self.tr2("Luku epäonnistui: ","Read failed: ")+detail)
             return
         self.target = result
-        if self.open_target(detail) and self.sim is not None:
+        self.safety_path = detail
+        if self.open_target(detail):
             report = preview(self.source,result)
             if report["status"] == "preview_only" and report["steps"]:
                 self.approved_steps = plan(self.source,result,allow_device_mismatch=True)
 
     def apply_restore(self):
-        if self.worker is not None or self.sim is None or not self.approved_steps:
+        if self.worker is not None or not self.approved_steps:
             return
-        if QMessageBox.question(self,self.windowTitle(),self.tr2("Palautetaanko asetukset simulaattoriin?","Restore settings to simulator?"),QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:
+        confirmation = None
+        if self.sim is None:
+            confirmation, ok = QInputDialog.getText(self,self.windowTitle(),self.tr2('Vain eristetty testilaite, kuormat irrotettu. Kirjoitus voi muuttaa säätimen toimintaa. Vahvista kirjoittamalla BENCH.','Isolated bench controller only, loads disconnected. Writes may change controller operation. Type BENCH to confirm.'))
+            if not ok or confirmation != 'BENCH':
+                return
+        elif QMessageBox.question(self,self.windowTitle(),self.tr2("Palautetaanko asetukset simulaattoriin?","Restore settings to simulator?"),QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:
             return
         steps,self.approved_steps = self.approved_steps,None
-        self.start_worker(RestoreWorker(self.port,self.sim,self.directory/(uuid4().hex+"-journal.json"),self.source,self.target,steps,self),self.restore_done)
+        worker = RestoreWorker(self.port,self.sim,self.directory/(uuid4().hex+"-journal.json"),self.source,self.target,steps,self)
+        worker.safety_path = self.safety_path
+        worker.bench_confirmation = confirmation
+        self.start_worker(worker,self.restore_done)
 
     def restore_done(self, result, detail):
         self.status.setText((self.tr2("Palautus varmennettu takaisinluvulla: ","Restore verified by readback: ") if result else self.tr2("Palautus keskeytyi; tarkista nykytila: ","Restore interrupted; inspect current state: "))+detail)
+        if result and self.sim is None:
+            self.status.setText(self.status.text()+'\n'+self.tr2('Pysyvyyttä uudelleenkäynnistyksen jälkeen ei ole varmennettu.','Persistence after restart has not been verified.'))
         self.clear_preview()
 
     def reject(self):
