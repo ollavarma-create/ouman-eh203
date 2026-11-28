@@ -28,7 +28,10 @@ class DashboardTests(unittest.TestCase):
             widget.update_sample(18, -4.1, datetime.now(timezone.utc).isoformat())
             self.assertEqual(widget.rows[18][1].text(), "-4.1 °C")
             self.assertEqual(widget.rows[18][2].text(), "Ajantasainen")
-            self.assertEqual(widget.rows["dhw_temp"][2].text(), "Ei toteutettu")
+            self.assertEqual(widget.rows[24][2].text(), "Odottaa")
+            widget.update_sample(24, 25.1, datetime.now(timezone.utc).isoformat())
+            self.assertEqual(widget.rows[24][1].text(), "25.1 °C")
+            self.assertEqual(widget.rows[24][2].text(), "Ajantasainen")
             widget.end()
             self.assertEqual(widget.rows[18][2].text(), "Vanhentunut")
         finally:

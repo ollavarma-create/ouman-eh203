@@ -17,11 +17,11 @@ class MonitoringTests(unittest.TestCase):
         identity = []
         def sample(pid, value, stamp):
             samples.append((pid, value))
-            if len(samples) == 13:
+            if len(samples) == 18:
                 manager.stop()
         manager.run(identity.append, sample)
         self.assertEqual(identity, ["44 45 4d 4f"])
-        self.assertEqual(samples, [(18, -5), (20, 28), (21, 21), ('l1_target', 30), ('dhw_target', 58), ('l1_mode', 1), ('l2_mode', 2), ('dhw_mode', 0), ('r1', True), ('r2', False), ('dhw_valve', 26), ('l1_room_setpoint', 21.5), ('l2_room', 20)])
+        self.assertEqual(samples, [(18, -5), (20, 28), (21, 21), ('l1_target', 30), ('dhw_target', 58), ('l1_mode', 1), ('l2_mode', 2), ('dhw_mode', 0), ('r1', True), ('r2', False), ('dhw_valve', 26), ('l1_room_setpoint', 21.5), ('l2_room', 20), (23, 24.2), (24, 25.1), (25, 52.5), (26, 41.5), (33, 21.4)])
         self.assertTrue(all(tx[1] == 0x81 for tx in ser.writes))
         self.assertEqual(closed, [True])
 

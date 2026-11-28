@@ -5,12 +5,12 @@ from .protocol import request, classify
 from .transport import open_serial, exchange
 from .simulator import SimulatedSerial
 
-POLL_IDS = (18, 20, 21, 15, 16, 42, 45, 51, 13, 17, 27)
+POLL_IDS = (18, 20, 21, 15, 16, 42, 45, 51, 13, 17, 27, 23, 24, 25, 26, 33)
 ACTIVE_KEYS = {18, 20, 21, "l1_target", "dhw_target", "dhw_valve",
-               "l1_mode", "l2_mode", "dhw_mode", "r1", "r2", "l1_room_setpoint", "l2_room"}
+               "l1_mode", "l2_mode", "dhw_mode", "r1", "r2", "l1_room_setpoint", "l2_room", 23, 24, 25, 26, 33}
 
 def decode_samples(pid, data):
-    if pid in (18, 20, 21):
+    if pid in (18, 20, 21, 23, 24, 25, 26, 33):
         return [(pid, temperature(data))]
     if pid == 13:
         if len(data) < 3:
@@ -37,7 +37,7 @@ def demo_serial():
                             20: bytes.fromhex("0af0"), 21: bytes.fromhex("0834"), 15: bytes(14)+bytes([30]),
                             16: bytes.fromhex("000244"), 42: bytes.fromhex("0021"),
                             45: bytes.fromhex("0008"), 51: bytes([26]), 13: bytes.fromhex('0000d7'),
-                            17: bytes([12]*8+[5]+[12]*11), 27: bytes.fromhex('07d0')})
+                            17: bytes([12]*8+[5]+[12]*11), 27: bytes.fromhex('07d0'), 23: bytes.fromhex('0974'), 24: bytes.fromhex('09ce'), 25: bytes.fromhex('1482'), 26: bytes.fromhex('1036'), 33: bytes.fromhex('085c')})
 
 def read_block(ser, pid):
     status, data, error = classify(exchange(ser, request(pid)), pid)
