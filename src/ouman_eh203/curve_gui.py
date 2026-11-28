@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from math import floor, ceil
 from PySide6.QtCore import Qt, QPointF, QTimer, Signal
 from PySide6.QtGui import QPainter, QPen, QColor
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox, QToolTip, QSizePolicy, QDialog, QSpinBox, QGridLayout, QDialogButtonBox
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox, QToolTip, QSizePolicy, QDialog, QSpinBox, QGridLayout
 
 from .curves import HeatingCurve
 
@@ -116,16 +116,18 @@ class CurveEditor(QDialog):
         grid = QGridLayout()
         layout.addLayout(grid)
         self.fields = []
+        for col, label in enumerate(("Piste", "Ulkolämpötila (°C)", "Menovesi (°C)") if fi else ("Point", "Outdoor (°C)", "Supply (°C)")):
+            grid.addWidget(QLabel(label),0,col)
         for i,(x,y) in enumerate(curve.active):
             a,b = QSpinBox(),QSpinBox()
             a.setRange(-20,20)
-            b.setRange(min(15,y),max(70,y))
+            b.setRange(min(5,y),max(120,y))
             a.setValue(x)
             b.setValue(y)
             a.setEnabled(curve.mode == 0 and i not in (0,len(curve.active)-1))
-            grid.addWidget(QLabel(str(i+1)),i,0)
-            grid.addWidget(a,i,1)
-            grid.addWidget(b,i,2)
+            grid.addWidget(QLabel(str(i+1)),i+1,0)
+            grid.addWidget(a,i+1,1)
+            grid.addWidget(b,i+1,2)
             self.fields.append((a,b))
             a.valueChanged.connect(self.refresh)
             b.valueChanged.connect(self.refresh)
@@ -150,11 +152,15 @@ class CurveEditor(QDialog):
         a,b = self.fields[i]
         if a.isEnabled():
             a.setValue(max(self.fields[i-1][0].value()+1,min(self.fields[i+1][0].value()-1,x)))
-        b.setValue(max(15,min(70,y)))
+        b.setValue(max(5,min(120,y)))
 
     def refresh(self,*_):
         points = tuple((a.value(),b.value()) for a,b in self.fields)
-        valid = all(a[0]<b[0] and a[1]>=b[1] for a,b in zip(points,points[1:])) and all(15<=y<=70 for x,y in points)
+        ordered = all(a[0]<b[0] for a,b in zip(points,points[1:]))
+        descending = all(a[1]>=b[1] for a,b in zip(points,points[1:]))
+        valid = ordered and all(5<=y<=120 for x,y in points)
+        self.within_test_bounds = valid and descending and all(15<=y<=70 for x,y in points)
+        self.plot.bounds = (0, max(80, 10*ceil(max(y for x,y in points+self.original.active)/10)))
         stored = list(self.original.stored)
         for i,point in zip((0,2,4) if self.original.mode==1 else range(5),points):
             stored[i] = point
@@ -165,7 +171,15 @@ class CurveEditor(QDialog):
                 if x<=self.plot.outdoor<=z:
                     estimate = y+(w-y)*(self.plot.outdoor-x)/(z-x)
                     break
-        msg = ("Luonnos – ei kirjoituksia. Vihreä: alkuperäinen; oranssi: luonnos." if self.fi else "Draft only – no writes. Green: original; orange: draft.") if valid else ("Käyrä ei täytä testirajoja." if self.fi else "Curve outside test bounds.")
+        msg = "Luonnos – ei kirjoituksia. Vihreä: alkuperäinen; oranssi: luonnos." if self.fi else "Draft only – no writes. Green: original; orange: draft."
+        if not ordered:
+            msg += "\n" + ("Virhe: X-pisteiden on oltava kasvavassa järjestyksessä." if self.fi else "Error: X points must be strictly increasing.")
+        if not all(5<=y<=120 for x,y in points):
+            msg += "\n" + ("Virhe: menoveden asettelualue 5–120 °C." if self.fi else "Error: supply setting range 5–120 °C.")
+        if not descending:
+            msg += "\n" + ("Varoitus: käyrässä on nouseva osuus." if self.fi else "Warning: curve contains a rising segment.")
+        if not self.within_test_bounds or self.original.mode != 0:
+            msg += "\n" + ("Kirjoitusrajoitus: nykyisen validoidun kirjoitusalueen ulkopuolella (5-pistetila, 15–70 °C, laskeva tai vaakasuora)." if self.fi else "Write restriction: outside current validated write envelope (five-point mode, 15–70 °C, non-increasing).")
         if estimate is not None:
             msg += (" Arvio: " if self.fi else " Estimate: ")+f"{estimate:.1f} °C"
         self.info.setText(msg)
