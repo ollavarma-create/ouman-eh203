@@ -121,7 +121,7 @@ def acquire(ser, destination, delay, start=0, end=255, quick=False, *, progress=
 
 
 
-def verify_file(obj, require_full=True):
+def verify_file(obj, require_full=True, *, structural_only=False):
     if obj.get('schema') != SCHEMA:
         raise ValueError('Unknown schema')
     a, b = obj['range']
@@ -143,14 +143,14 @@ def verify_file(obj, require_full=True):
         if state != rec['status'] or error is not None or rec['data'] != (
                 data.hex(' ').upper() if data is not None else None):
             raise ValueError(f'ID {pid}: response mismatch')
-    if require_full and {int(k) for k,v in records.items() if v['status']=='accepted'} != set(QUICK_IDS):
+    if require_full and not structural_only and {int(k) for k,v in records.items() if v['status']=='accepted'} != set(QUICK_IDS):
         raise ValueError('Quick profile mismatch; run full capture')
     ident = records['1']
     if require_full:
         if ident['status'] != 'accepted':
             raise ValueError('ID 1 identity unavailable')
         raw = bytes.fromhex(ident['data'])
-        if len(raw) < 9 or raw[4:7] != b'203' or raw[8] != 215:
+        if len(raw) < 9 or raw[4:7] != b'203' or (not structural_only and raw[8] != 215):
             raise ValueError('Not confirmed EH-203 firmware 2.15')
     return True
 
