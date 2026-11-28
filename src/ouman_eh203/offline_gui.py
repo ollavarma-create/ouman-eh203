@@ -118,7 +118,7 @@ class OfflinePage(QWidget):
 
     def populate_comparison(self):
         self.compare_button.setEnabled(self.snapshot is not None and self.simulation is None)
-        self.restore_button.setEnabled(True)
+        # Restore availability belongs to the owning window's serial lifecycle.
         self.only_changes.setEnabled(self.report is not None)
         self.diff.setColumnCount(6)
         self.diff.setHorizontalHeaderLabels(self.tr2(["Parametri","Ensimmäinen","Toinen","Yksikkö","Tila","Avain"],["Parameter","First","Second","Unit","Status","Key"]))
