@@ -373,3 +373,36 @@ class BenchParameterTests(unittest.TestCase):
         self.sim.blocks[65] = bytes(b)
         with self.assertRaises(ValueError):
             draft_preview(self.capture(), {'l1_parallel_shift': -5})
+
+
+    def test_restore_and_draft_share_shift_prediction(self):
+        from ouman_eh203.validation import propose
+        original = SimulatedSerial.from_snapshot(self.snapshot)
+        before = dict(original.blocks)
+        p = draft_preview(self.snapshot, {'l1_parallel_shift': -5, 'l2_parallel_shift': -4})
+        # The real restore simulator must produce exactly the predicted mirrors,
+        # not just the specialized draft test double.
+        for pid, _, expected in p.steps:
+            self.assertTrue(original.apply(pid, dict(expected)[pid]))
+        original.reboot()
+        self.assertEqual(original.blocks[65][9], 0xfb)
+        self.assertEqual(original.blocks[66][9], 0xfc)
+        source = acquire(original, self.directory/'restore-source.json', 0,
+                         progress=lambda *_: None)
+        state = dict(p.before)
+        for pid, _, expected in p.steps:
+            state = propose(source, pid, state)
+            self.assertEqual(state, dict(expected))
+        self.assertEqual(state, dict(p.after))
+
+    def test_restore_rejects_inconsistent_shift_source(self):
+        from ouman_eh203.validation import propose
+        original = SimulatedSerial.from_snapshot(self.snapshot)
+        b = bytearray(original.blocks[12])
+        b[27] = 0xfb
+        original.blocks[12] = bytes(b)
+        source = acquire(original, self.directory/'inconsistent-source.json', 0,
+                         progress=lambda *_: None)
+        before = dict(draft_preview(self.snapshot, {}).before)
+        with self.assertRaisesRegex(ValueError, 'Source parallel shift mirror mismatch'):
+            propose(source, 12, before)
