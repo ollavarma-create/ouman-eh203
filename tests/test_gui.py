@@ -20,10 +20,12 @@ class GuiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             settings = QSettings(directory + "/test.ini", QSettings.Format.IniFormat)
             window = Window(settings)
-            self.assertEqual(window.tabs.count(), 2)
+            self.assertEqual(window.tabs.count(), 3)
+            self.assertEqual(window.tabs.tabText(2), "Heating curves")
             self.assertFalse(window.port.isEnabled())
             window.language.setCurrentText("fi")
             self.assertEqual(window.tabs.tabText(0), "Käytönvalvonta")
+            self.assertEqual(window.tabs.tabText(2), "Lämmityskäyrät")
             window.mode.setCurrentIndex(1)
             self.assertTrue(window.port.isEnabled())
             window.close()
