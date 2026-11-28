@@ -59,6 +59,9 @@ class Window(QMainWindow):
         self.connect_button = QPushButton()
         for widget in (self.language, self.mode, self.port, self.connect_button):
             bar.addWidget(widget)
+        self.manual_button = QPushButton('⚙')
+        self.manual_button.clicked.connect(self.open_manual_settings)
+        bar.addWidget(self.manual_button)
         self.status = QLabel()
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
@@ -81,6 +84,10 @@ class Window(QMainWindow):
         self.translate()
         self.reset_status()
 
+    def open_manual_settings(self):
+        from .manual_gui import ManualSettings
+        ManualSettings(self.settings, self.language.currentText(), self).exec()
+
     def translate(self):
         lang = self.language.currentText()
         self.settings.setValue("language", lang)
@@ -88,6 +95,7 @@ class Window(QMainWindow):
         self.tabs.setTabText(0, s[0])
         self.tabs.setTabText(1, s[1])
         self.connect_button.setText(s[2])
+        self.manual_button.setToolTip('Dokumentaatio' if lang == 'fi' else 'Documentation')
         self.mode.setItemText(0, s[4])
         self.mode.setItemText(1, s[5])
         self.monitor.setText(s[6])
