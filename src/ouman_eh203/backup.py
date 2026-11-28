@@ -75,7 +75,7 @@ def exchange(ser, pid):
             'captured_at': utc()}
 
 
-def acquire(ser, destination, delay, start=0, end=255, quick=False):
+def acquire(ser, destination, delay, start=0, end=255, quick=False, *, progress=None, cancelled=None):
     """Persist every response immediately, keeping partial failures for forensics."""
     if not 0 <= start <= end <= 255:
         raise ValueError('Invalid ID range')
@@ -91,6 +91,8 @@ def acquire(ser, destination, delay, start=0, end=255, quick=False):
     atomic_json(destination, output)
     try:
         for pid in ids:
+            if cancelled is not None and cancelled():
+                break
             try:
                 rec = exchange(ser, pid)
             except (OSError, ValueError) as exc:
@@ -101,7 +103,10 @@ def acquire(ser, destination, delay, start=0, end=255, quick=False):
                 raise
             output['records'][str(pid)] = rec
             atomic_json(destination, output)
-            print(f'ID {pid:3}: {rec["status"]}', flush=True)
+            if progress is None:
+                print(f'ID {pid:3}: {rec["status"]}', flush=True)
+            else:
+                progress(len(output['records']), len(ids))
             if delay and pid != end:
                 time.sleep(delay)
     finally:
