@@ -15,6 +15,7 @@ class OfflinePage(QWidget):
         self.report = None
         self.lang = "en"
         self.help_callback = help_callback
+        self.restore_callback = None
         layout = QVBoxLayout(self)
         bar = QHBoxLayout()
         self.open_button = QPushButton()
@@ -83,8 +84,8 @@ class OfflinePage(QWidget):
         return True
 
     def open_restore(self):
-        from .restore_gui import RestoreDialog
-        RestoreDialog(None,self.lang,self).exec()
+        if self.restore_callback is not None:
+            self.restore_callback()
 
     def choose_comparison(self):
         path,_ = QFileDialog.getOpenFileName(self,self.tr2("Valitse toinen varmuuskopio","Choose second backup"),"","JSON (*.json)")
