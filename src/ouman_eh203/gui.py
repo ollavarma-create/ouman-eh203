@@ -3,6 +3,7 @@ import sys
 from serial.tools.list_ports import comports
 from pathlib import PurePath
 from .monitoring import OperationManager
+from .dashboard import Dashboard
 from PySide6.QtCore import QSettings, QThread, Signal
 from PySide6.QtWidgets import (QApplication, QWidget, QMainWindow, QVBoxLayout,
     QHBoxLayout, QLabel, QPushButton, QComboBox, QLineEdit, QTabWidget)
@@ -59,7 +60,7 @@ class Window(QMainWindow):
         self.settings = settings if settings is not None else QSettings("EH203Manager", "Desktop")
         self.worker = None
         self.setWindowTitle("Ouman EH-203 Manager")
-        self.resize(1050, 480)
+        self.resize(1050, 640)
         root = QWidget()
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
@@ -75,7 +76,7 @@ class Window(QMainWindow):
         self.port.setMinimumWidth(140)
         self.connect_button = QPushButton()
         self.session = None
-        self.samples = {}
+        self.closing = False
         self.scan_button = QPushButton("↻")
         self.scan_button.clicked.connect(self.scan_ports)
         self.port_choices = QComboBox()
@@ -98,11 +99,11 @@ class Window(QMainWindow):
         layout.addWidget(self.status)
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
-        self.monitor = QLabel()
-        self.monitor.setWordWrap(True)
+        self.monitor = Dashboard()
+        self.tabs.addTab(self.monitor, '')
         self.config = QLabel()
         self.config.setWordWrap(True)
-        for label in (self.monitor, self.config):
+        for label in (self.config,):
             page = QWidget()
             box = QVBoxLayout(page)
             box.addWidget(label)
@@ -149,8 +150,8 @@ class Window(QMainWindow):
         if not simulated and not port:
             return
         self.settings.setValue("port", port)
-        self.samples.clear()
-        self.monitor.clear()
+        self.monitor.begin()
+        self.status.setToolTip('')
         self.session = MonitorWorker(port, simulated, self)
         self.session.identity.connect(self.monitor_identity)
         self.session.sample.connect(self.monitor_sample)
@@ -165,18 +166,11 @@ class Window(QMainWindow):
 
     def monitor_identity(self, detail):
         prefix = ("Simulaattori" if self.language.currentText() == "fi" else "Simulator") if self.mode.currentIndex() == 0 else f"RS-232 · {self.port.text().strip()}"
-        self.status.setText(f"{prefix}: {detail}")
+        self.status.setToolTip(detail)
+        self.status.setText(f"{prefix} · " + ("Yhteys muodostettu" if self.language.currentText() == "fi" else "Connected"))
 
     def monitor_sample(self, pid, value, stamp):
-        self.samples[pid] = (value, stamp)
-        fi = self.language.currentText() == "fi"
-        names = {18: ("Ulkolämpötila", "Outdoor"), 20: ("L1 menovesi", "L1 supply"),
-                 21: ("L1 huone", "L1 room")}
-        lines = []
-        for key, (val, ts) in sorted(self.samples.items()):
-            reading = "—" if val is None else f"{val:.2f} °C"
-            lines.append(f"{names[key][0 if fi else 1]}: {reading}   [{ts}]")
-        self.monitor.setText("\n".join(lines))
+        self.monitor.update_sample(pid, value, stamp)
 
     def monitor_error(self, detail):
         self.status.setText(("Virhe: " if self.language.currentText() == "fi" else "Error: ") + detail)
@@ -190,7 +184,11 @@ class Window(QMainWindow):
         self.port.setEnabled(self.mode.currentIndex() == 1)
         fi = self.language.currentText() == "fi"
         self.live_button.setText("Yhdistä" if fi else "Connect")
-        self.monitor.setText("Ei yhteyttä — tiedot vanhentuneet" if fi else "Disconnected — data stale")
+        self.monitor.end()
+        if self.closing:
+            self.close()
+        if not self.status.text().startswith(("Virhe:", "Error:")):
+            self.status.setText("Ei yhteyttä" if fi else "Disconnected")
 
     def open_manual_settings(self):
         from .manual_gui import ManualSettings
@@ -207,13 +205,14 @@ class Window(QMainWindow):
         self.manual_button.setToolTip('Dokumentaatio' if lang == 'fi' else 'Documentation')
         self.mode.setItemText(0, s[4])
         self.mode.setItemText(1, s[5])
-        self.monitor.setText(s[6])
+        self.monitor.translate(lang)
         self.config.setText(s[7])
         if self.worker is None:
             self.status.setText(s[3])
 
     def reset_status(self, *_):
         self.port.setEnabled(self.mode.currentIndex() == 1 and self.worker is None)
+        self.status.setToolTip('')
         self.status.setText(STRINGS[self.language.currentText()][3])
 
     def start_probe(self):
@@ -253,6 +252,7 @@ class Window(QMainWindow):
 
     def closeEvent(self, event):
         if self.session is not None:
+            self.closing = True
             self.session.manager.stop()
             event.ignore()
             return
