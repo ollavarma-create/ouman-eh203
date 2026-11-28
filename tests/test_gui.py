@@ -32,6 +32,73 @@ class GuiTests(unittest.TestCase):
             self.assertTrue(window.backup_button.isEnabled())
             window.close()
 
+    def test_configuration_workflow_modes(self):
+        from pathlib import Path
+        from ouman_eh203.gui import Window
+        app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as directory:
+            window = Window(QSettings(directory + "/test.ini", QSettings.Format.IniFormat))
+            try:
+                self.assertTrue(window.backup_group.isHidden())
+                self.assertTrue(window.write_group.isHidden())
+                self.assertTrue(window.use_backup_button.isHidden())
+                window.mode.setCurrentIndex(1)
+                self.assertFalse(window.backup_group.isHidden())
+                self.assertFalse(window.write_group.isHidden())
+                self.assertTrue(window.edit_button.isHidden())
+                self.assertFalse(window.bench_edit_button.isHidden())
+                self.assertTrue(window.bench_edit_button.isEnabled())
+                self.assertIn('automatically', window.config.text())
+                self.assertEqual(window.live_button.text(), 'Start monitoring')
+                window.language.setCurrentText('fi')
+                self.assertEqual(window.live_button.text(), 'Käynnistä valvonta')
+                self.assertIn('automaattisesti', window.config.text())
+                window.port.clear()
+                self.assertFalse(window.backup_button.isEnabled())
+                self.assertFalse(window.bench_edit_button.isEnabled())
+                self.assertFalse(window.offline.restore_button.isEnabled())
+                window.port.setText('/dev/ttyUSB0')
+                fixture = Path(__file__).parent / 'fixtures/eh203_215/factory_reset_pass1.json'
+                self.assertTrue(window.open_configuration_path(fixture))
+                self.assertFalse(window.use_backup_button.isHidden())
+                self.assertTrue(window.load_snapshot(fixture))
+                self.assertTrue(window.backup_group.isHidden())
+                self.assertTrue(window.bench_edit_button.isHidden())
+                self.assertFalse(window.edit_button.isHidden())
+                self.assertTrue(window.edit_button.isEnabled())
+                self.assertTrue(window.use_backup_button.isHidden())
+            finally:
+                window.close()
+                window.deleteLater()
+
+    def test_configuration_blocked_while_monitoring(self):
+        from pathlib import Path
+        from ouman_eh203.gui import Window
+        app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as directory:
+            window = Window(QSettings(directory + "/test.ini", QSettings.Format.IniFormat))
+            try:
+                window.mode.setCurrentIndex(1)
+                fixture = Path(__file__).parent / 'fixtures/eh203_215/factory_reset_pass1.json'
+                self.assertTrue(window.open_configuration_path(fixture))
+                # Simulate ownership without starting a real serial worker.
+                window.session = object()
+                window.backup_enabled()
+                self.assertFalse(window.backup_button.isEnabled())
+                self.assertFalse(window.bench_edit_button.isEnabled())
+                self.assertFalse(window.offline.restore_button.isEnabled())
+                self.assertIn('Stop monitoring', window.config.text())
+                self.assertTrue(window.offline.compare_path(fixture))
+                self.assertFalse(window.offline.restore_button.isEnabled())
+                window.session = None
+                window.backup_enabled()
+                self.assertTrue(window.bench_edit_button.isEnabled())
+                self.assertTrue(window.offline.restore_button.isEnabled())
+            finally:
+                window.session = None
+                window.close()
+                window.deleteLater()
+
     def test_simulation_configuration_lifecycle(self):
         from pathlib import Path
         from ouman_eh203.gui import Window
