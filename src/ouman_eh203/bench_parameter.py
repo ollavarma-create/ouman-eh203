@@ -6,7 +6,7 @@ import time
 
 from .backup import acquire, verify_file, load, atomic_json, utc
 from .metadata import PARAMETERS
-from .registry import FIELDS
+from .registry import FIELDS, QUICK_IDS
 from .validation import BOUNDS, block
 from .restore import IDS, authorize, block_identity
 from .protocol import request, write_frame, decode
@@ -30,8 +30,11 @@ class Preview:
 
 def _state(snapshot):
     verify_file(snapshot)
-    if set(snapshot['records']) != {str(i) for i in range(256)}:
-        raise ValueError('Full backup required')
+    # A verified firmware-specific profile covers every known readable ID.
+    # Full discovery captures remain valid, but are not required for editing.
+    records = snapshot['records']
+    if {int(k) for k, v in records.items() if v['status'] == 'accepted'} != set(QUICK_IDS):
+        raise ValueError('Complete accepted-ID backup required')
     identity = block_identity(snapshot)
     authorize(identity, identity)
     return identity, {i: block(snapshot, i) for i in IDS}
@@ -81,7 +84,7 @@ def _apply(ser, approved, safety_path, journal_path, *, settle, progress=None):
         raise ValueError('Stale preview')
     if before == after:
         return False
-    acquire(ser, safety_path, 0.25, progress=progress or (lambda *_: None))
+    acquire(ser, safety_path, 0.25, quick=True, progress=progress or (lambda *_: None))
     safety = load(safety_path)
     if preview(safety, approved.key, approved.value) != approved:
         raise ValueError('Target changed during safety backup')
@@ -91,7 +94,7 @@ def _apply(ser, approved, safety_path, journal_path, *, settle, progress=None):
     journal = dict(schema='ouman.eh203.bench-parameter.v1', created_at=utc(),
                    key=approved.key, old=str(approved.old), value=str(approved.value),
                    target_identity=approved.identity.hex(), id=approved.pid,
-                   safety=str(safety_path), safety_sha256=safety['records_sha256'],
+                   safety=str(safety_path), safety_sha256=safety['records_sha256'], safety_profile=safety['profile'],
                    before={str(i): b.hex() for i, b in before.items()},
                    expected={str(i): b.hex() for i, b in after.items()},
                    tx=tx.hex(), status='write_outcome_unknown', persistence_verified=False)
