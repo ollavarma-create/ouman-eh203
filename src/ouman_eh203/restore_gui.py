@@ -65,6 +65,10 @@ class RestoreDialog(QDialog):
             (self.tr2("Ei varmennettua firmwareprofiilia; kaikki kirjoitukset estetty.","No validated firmware profile; all writes blocked.") if not report["compatible"] else
             self.tr2("Suunnitellut kirjoitus-ID:t: ","Planned write IDs: ")+str(report["steps"])+"\n"+
             self.tr2("Palautusmoottorin ulkopuoliset ID:t: ","IDs outside restore engine: ")+str(report["excluded_ids"])))
+        if report["status"] == "blocked":
+            self.status.setText(str(path)+"\n"+identity+"\n"+self.tr2("Palautus estetty – ei hyväksyttyä kirjoitussuunnitelmaa: ","Restore blocked – no approved write plan: ")+report["reason"])
+        elif report["status"] == "no_changes":
+            self.status.setText(str(path)+"\n"+identity+"\n"+self.tr2("Palautusmoottorin lohkot ovat samat. Ei kirjoitustarvetta; tämä ei takaa koko konfiguraation yhtäläisyyttä.","Restore engine blocks match. No writes needed; this does not prove complete configuration equality."))
         self.table.setRowCount(len(report["fields"]))
         for row,(key,before,after,unit) in enumerate(report["fields"]):
             for col,value in enumerate((PARAMETERS[key]["label"].get(self.lang) or key,before,after,unit,
