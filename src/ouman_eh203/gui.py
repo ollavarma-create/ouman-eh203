@@ -159,16 +159,21 @@ class Window(QMainWindow):
             self.backup_group = QGroupBox()
             backup_layout = QVBoxLayout(self.backup_group)
             backup_layout.addWidget(self.backup_button)
-            box.addWidget(self.backup_group)
+            action_row = QHBoxLayout()
+            action_row.addWidget(self.backup_group, 1)
+            box.addLayout(action_row)
             self.backup_result = None
             self.backup_status = QLabel()
             self.backup_status.setWordWrap(True)
             backup_layout.addWidget(self.backup_status)
+            self.backup_hint = QLabel()
+            self.backup_hint.setWordWrap(True)
+            backup_layout.addWidget(self.backup_hint)
             self.write_group = QGroupBox()
             write_layout = QVBoxLayout(self.write_group)
             write_row = QHBoxLayout()
             write_layout.addLayout(write_row)
-            box.addWidget(self.write_group)
+            action_row.addWidget(self.write_group, 2)
             self.edit_button = QPushButton()
             self.edit_button.clicked.connect(self.open_parameter_editor)
             write_row.addWidget(self.edit_button)
@@ -227,7 +232,9 @@ class Window(QMainWindow):
     def open_configuration_path(self, path):
         if self.mode.currentIndex() == 2:
             return self.load_snapshot(path)
-        return self.offline.open_path(path)
+        result = self.offline.open_path(path)
+        self.backup_enabled()
+        return result
 
     def use_open_backup(self):
         if self.offline.snapshot is not None and self.use_backup_button.isEnabled():
@@ -294,7 +301,7 @@ class Window(QMainWindow):
         from PySide6.QtWidgets import QMessageBox
         from .restore_gui import RestoreDialog
         mode = self.mode.currentIndex()
-        if mode == 0 or (mode == 2 and self.snapshot is None):
+        if mode == 0 or (mode == 1 and not self.port.text().strip()) or (mode == 2 and self.snapshot is None):
             QMessageBox.information(self,self.windowTitle(), 'Valitse sarjaportti tai lataa simulaattorin varmuuskopio.' if self.language.currentText()=='fi' else 'Select serial port or load a simulator backup.')
             return
         dialog = RestoreDialog(None,self.language.currentText(),self,port=self.port.text().strip(),sim=self.snapshot_sim if mode==2 else None)
@@ -326,7 +333,7 @@ class Window(QMainWindow):
 
     def accent(self, widget, role):
         # Keep native backgrounds, disabled colors and focus rendering.
-        palette = QApplication.palette(widget)
+        palette = QApplication.palette()
         dark = palette.color(QPalette.ColorRole.Window).lightness() < 128
         colors = {'read': ('#17568d', '#9ad0ff'),
                   'write': ('#934400', '#ffbc80'),
@@ -349,8 +356,8 @@ class Window(QMainWindow):
             text = 'Toiminto käynnissä. Odota sen päättymistä.' if fi else 'An operation is in progress. Wait for it to finish.'
             role = None
         elif mode == 1 and self.port.text().strip():
-            text = ('Sarjaportti vapaa asetusten hallintaan. Toiminnot muodostavat yhteyden automaattisesti; valvontaa ei tarvitse käynnistää.' if fi else
-                    'Serial port available for settings. Operations connect automatically; no need to start monitoring.')
+            text = ('Valvonta pysäytetty. Asetustoiminnot avaavat sarjaportin automaattisesti; valvontaa ei tarvitse käynnistää.' if fi else
+                    'Monitoring stopped. Settings operations open the serial port automatically; no need to start monitoring.')
             role = 'success'
         elif mode == 1:
             text = 'Valitse sarjaportti ensin.' if fi else 'Select a serial port first.'
@@ -480,7 +487,7 @@ class Window(QMainWindow):
             self.session.manager.stop()
             self.live_button.setEnabled(False)
             return
-        if self.worker is not None:
+        if self.worker is not None or self.backup_worker is not None:
             return
         simulated = self.mode.currentIndex() != 1
         factory = self.snapshot_factory()
@@ -565,10 +572,11 @@ class Window(QMainWindow):
         self.backup_group.setTitle('Varmuuskopiointi' if lang == 'fi' else 'Backup')
         self.write_group.setTitle('Asetusten muuttaminen' if lang == 'fi' else 'Edit settings')
         self.inspection_group.setTitle('Varmuuskopioiden tarkastelu' if lang == 'fi' else 'Inspect backups')
-        self.backup_button.setToolTip('Raakakaappaus ei takaa kaikkien asetusten palautettavuutta.' if lang == 'fi' else 'Raw capture does not guarantee restoration of every setting.')
+        self.backup_hint.setText('Raakakaappaus ei takaa kaikkien asetusten palautettavuutta.' if lang == 'fi' else 'Raw capture does not guarantee restoration of every setting.')
+        self.backup_button.setToolTip(self.backup_hint.text())
         self.edit_button.setText('Muokkaa simulaattorin asetuksia' if lang=='fi' else 'Edit simulator settings')
         self.bench_edit_button.setText('Muokkaa testilaitteen asetuksia (kokeellinen)' if lang=='fi' else 'Edit bench controller settings (experimental)')
-        self.use_backup_button.setText('Käytä avattua varmuuskopiota simulaattorissa' if lang=='fi' else 'Use opened backup in simulator')
+        self.use_backup_button.setText('Siirry simulaattoriin avatulla varmuuskopiolla' if lang=='fi' else 'Switch to simulator with opened backup')
         self.save_scenario_button.setText('Tallenna simulaatio nimellä' if lang=='fi' else 'Save simulation as')
         self.offline.translate(lang)
         self.translate_backup_status()
@@ -603,13 +611,13 @@ class Window(QMainWindow):
             self.offline.path = ''
             self.offline.populate()
         self.backup_enabled()
-        self.port.setEnabled(self.mode.currentIndex() == 1 and self.worker is None)
+        self.port.setEnabled(self.mode.currentIndex() == 1 and self.worker is None and self.session is None and self.backup_worker is None)
         self.status.setToolTip('')
         self.status.setText(STRINGS[self.language.currentText()][3])
         self.accent(self.status, None)
 
     def start_probe(self):
-        if self.worker is not None or self.session is not None:
+        if self.worker is not None or self.session is not None or self.backup_worker is not None:
             return
         simulated = self.mode.currentIndex() != 1
         factory = self.snapshot_factory()
