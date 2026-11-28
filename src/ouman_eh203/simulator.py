@@ -109,8 +109,10 @@ class SimulatedSerial:
                 updated[mirror]=bytes(data[i] for i in (1,3,5))+updated[mirror][3:]
             else:
                 return False
-        elif pid==12 and changes<= {4,7,20} and (20 not in changes or (old[20],data[20])==(5,15)):
+        elif pid==12 and changes<= {3,4,5,7,14,20,27} and (20 not in changes or (old[20],data[20])==(5,15)):
             b=bytearray(updated[14]); b[16]=data[20]; updated[14]=bytes(b)
+        elif pid==14 and changes<= {3,4,5,9,23}:
+            pass
         elif pid==43 and old==bytes(2) and data==bytes((4,0)) and updated[17][17]==99:
             b=bytearray(updated[17]); b[17]=2; updated[17]=bytes(b)
         elif pid in (13,14,16,44,47) and changes <= {13:{2},14:{25,26},16:{4,6},44:{2,4,10,15,18,27},47:set(range(5))}[pid]:
@@ -122,6 +124,12 @@ class SimulatedSerial:
         else:
             return False
         updated[pid]=data
+        if pid in (12,14):
+            from .validation import apply_shift_mirror
+            try:
+                apply_shift_mirror(pid,self.blocks,updated)
+            except ValueError:
+                return False
         if pid==65 and changes=={0} and self.recalculate_curves:
             self.persistent.update(updated)
             for j in (65,66):

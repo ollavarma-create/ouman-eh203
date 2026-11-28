@@ -18,13 +18,23 @@ class BenchWire(SimulatedSerial):
         self.write_fault = None
 
     def apply(self, pid, data):
-        allowed = {12: {3, 4}, 13: {1, 2}, 16: {1, 2}}
+        allowed = {12: {3, 4, 5, 7, 14, 27}, 13: {1, 2},
+                   14: {3, 4, 5, 9, 23}, 16: {1, 2}}
         old = self.blocks[pid]
         if len(data) != len(old) or not set(i for i, (a, b) in enumerate(zip(old, data))
                                            if a != b) <= allowed.get(pid, set()):
             return False
         self.blocks[pid] = data
         self.persistent[pid] = data
+        # Model only the exact observed L1 mirror and candidate L2 mirror.
+        if pid in (12, 14):
+            offset, mirror = {12: (27,65), 14: (23,66)}[pid]
+            if old[offset] != data[offset]:
+                b = bytearray(self.blocks[mirror])
+                b[9] = data[offset]
+                if self.write_fault == 'extra_mirror_byte':
+                    b[10] ^= 1
+                self.blocks[mirror] = self.persistent[mirror] = bytes(b)
         if self.write_fault == 'readback':
             self.blocks[pid] = old
         return True
@@ -281,3 +291,118 @@ class BenchParameterTests(unittest.TestCase):
             ('readback', 16), ('verified', 16),
             ('final_check', 0), ('final_capture', 0),
         ])
+
+
+    def test_expanded_heating_draft_groups_and_preserves_bytes(self):
+        values = {'l1_room_gain': '3.5', 'l1_night_reduction': 4,
+                  'l1_parallel_shift': -2, 'l1_autumn_drying': 3,
+                  'l2_supply_min': 20, 'l2_supply_max': 65,
+                  'l2_night_reduction': 5, 'l2_parallel_shift': -3,
+                  'l2_autumn_drying': 4}
+        p = draft_preview(self.snapshot, values)
+        self.assertEqual(len(p.changes), 9)
+        self.assertEqual([step[0] for step in p.steps], [12, 14])
+        before, after = dict(p.before), dict(p.after)
+        for pid, offsets in ((12, {5: 4, 7: 35, 14: 3, 27: 254}),
+                             (14, {3: 20, 4: 65, 5: 5, 9: 4, 23: 253})):
+            expected = bytearray(before[pid])
+            for offset, raw in offsets.items():
+                expected[offset] = raw
+            self.assertEqual(after[pid], bytes(expected))
+        self.assertEqual({i for i in before if before[i] != after[i]}, {12, 14, 65, 66})
+        for pid, raw in ((65, 254), (66, 253)):
+            self.assertEqual(after[pid], before[pid][:9]+bytes([raw])+before[pid][10:])
+        self.allowed_writes = 2
+        result = self.apply_draft(p)
+        self.assertTrue(verify_file(result))
+        self.assertEqual([tx[4] for tx in self.sim.writes if tx[1] == 0x82], [12, 14])
+        self.assertEqual(self.sim.blocks[12], after[12])
+        self.assertEqual(self.sim.blocks[14], after[14])
+        self.assertEqual(self.sim.blocks[65], after[65])
+        self.assertEqual(self.sim.blocks[66], after[66])
+        self.assertEqual(load(self.journal)['status'], 'complete')
+
+    def test_expanded_heating_limits_and_resolution(self):
+        for values in ({'l1_room_gain': '7.1'}, {'l1_room_gain': '3.55'},
+                       {'l2_supply_min': 4}, {'l2_supply_max': 96},
+                       {'l1_night_reduction': 36}, {'l2_night_reduction': -1},
+                       {'l1_parallel_shift': -16}, {'l2_parallel_shift': 15.5},
+                       {'l1_autumn_drying': 16}, {'l2_autumn_drying': -1},
+                       {'l2_room_setpoint': 21}, {'l1_outdoor_delay': 4}):
+            with self.subTest(values=values), self.assertRaises(ValueError):
+                draft_preview(self.snapshot, values)
+        self.assertFalse(self.sim.writes)
+
+    def test_l2_min_max_dependency_and_cross_circuit_order(self):
+        with self.assertRaises(ValueError):
+            draft_preview(self.snapshot, {'l2_supply_min': 60, 'l2_supply_max': 50})
+        p = draft_preview(self.snapshot, {'l2_supply_min': 65, 'l2_supply_max': 80,
+                                         'l1_room_setpoint': 22, 'dhw_setpoint': 59,
+                                         'l1_parallel_shift': 2})
+        self.assertEqual([s[0] for s in p.steps], [12, 13, 16, 14])
+        self.assertEqual(dict(p.after)[14][3:5], bytes([65,80]))
+        self.assertFalse(self.sim.writes)
+
+
+    def test_shift_mirror_is_in_next_step_and_final_state(self):
+        p = draft_preview(self.snapshot, {'l1_parallel_shift': -5, 'l2_parallel_shift': -4,
+                                         'l1_room_setpoint': 23})
+        self.assertEqual([s[0] for s in p.steps], [12,13,14])
+        self.assertEqual(dict(p.steps[0][2])[65][9], 0xfb)
+        self.assertEqual(dict(p.steps[1][1])[65][9], 0xfb)
+        self.assertEqual(dict(p.after)[66][9], 0xfc)
+        self.allowed_writes = 3
+        self.apply_draft(p)
+        self.assertEqual(self.sim.blocks[65][9], 0xfb)
+        self.assertEqual(self.sim.blocks[66][9], 0xfc)
+
+    def test_unexpected_mirror_byte_still_stops_transaction(self):
+        p = draft_preview(self.snapshot, {'l1_parallel_shift': -5, 'dhw_setpoint': 59})
+        self.sim.write_fault = 'extra_mirror_byte'
+        self.allowed_writes = 1
+        with self.assertRaises(ValueError):
+            self.apply_draft(p)
+        entries = load(self.journal)['entries']
+        self.assertEqual([e['status'] for e in entries],
+                         ['write_outcome_unknown', 'not_started'])
+        self.assertEqual(self.sim.blocks[16], dict(p.before)[16])
+
+    def test_initial_mirror_mismatch_blocks_shift(self):
+        b = bytearray(self.sim.blocks[65])
+        b[9] = 1
+        self.sim.blocks[65] = bytes(b)
+        with self.assertRaises(ValueError):
+            draft_preview(self.capture(), {'l1_parallel_shift': -5})
+
+
+    def test_restore_and_draft_share_shift_prediction(self):
+        from ouman_eh203.validation import propose
+        original = SimulatedSerial.from_snapshot(self.snapshot)
+        before = dict(original.blocks)
+        p = draft_preview(self.snapshot, {'l1_parallel_shift': -5, 'l2_parallel_shift': -4})
+        # The real restore simulator must produce exactly the predicted mirrors,
+        # not just the specialized draft test double.
+        for pid, _, expected in p.steps:
+            self.assertTrue(original.apply(pid, dict(expected)[pid]))
+        original.reboot()
+        self.assertEqual(original.blocks[65][9], 0xfb)
+        self.assertEqual(original.blocks[66][9], 0xfc)
+        source = acquire(original, self.directory/'restore-source.json', 0,
+                         progress=lambda *_: None)
+        state = dict(p.before)
+        for pid, _, expected in p.steps:
+            state = propose(source, pid, state)
+            self.assertEqual(state, dict(expected))
+        self.assertEqual(state, dict(p.after))
+
+    def test_restore_rejects_inconsistent_shift_source(self):
+        from ouman_eh203.validation import propose
+        original = SimulatedSerial.from_snapshot(self.snapshot)
+        b = bytearray(original.blocks[12])
+        b[27] = 0xfb
+        original.blocks[12] = bytes(b)
+        source = acquire(original, self.directory/'inconsistent-source.json', 0,
+                         progress=lambda *_: None)
+        before = dict(draft_preview(self.snapshot, {}).before)
+        with self.assertRaisesRegex(ValueError, 'Source parallel shift mirror mismatch'):
+            propose(source, 12, before)
