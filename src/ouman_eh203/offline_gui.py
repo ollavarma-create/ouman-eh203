@@ -15,6 +15,7 @@ class OfflinePage(QWidget):
         self.report = None
         self.lang = "en"
         self.help_callback = help_callback
+        self.restore_callback = None
         layout = QVBoxLayout(self)
         bar = QHBoxLayout()
         self.open_button = QPushButton()
@@ -28,7 +29,9 @@ class OfflinePage(QWidget):
         self.only_changes = QCheckBox()
         self.only_changes.setChecked(True)
         self.only_changes.toggled.connect(self.filter)
-        for w in (self.open_button,self.compare_button,self.search,self.help):
+        self.restore_button = QPushButton()
+        self.restore_button.clicked.connect(self.open_restore)
+        for w in (self.open_button,self.compare_button,self.restore_button,self.search,self.help):
             bar.addWidget(w)
         layout.addLayout(bar)
         self.status = QLabel()
@@ -80,6 +83,10 @@ class OfflinePage(QWidget):
         self.populate()
         return True
 
+    def open_restore(self):
+        if self.restore_callback is not None:
+            self.restore_callback()
+
     def choose_comparison(self):
         path,_ = QFileDialog.getOpenFileName(self,self.tr2("Valitse toinen varmuuskopio","Choose second backup"),"","JSON (*.json)")
         if path:
@@ -105,6 +112,7 @@ class OfflinePage(QWidget):
 
     def populate_comparison(self):
         self.compare_button.setEnabled(self.snapshot is not None)
+        self.restore_button.setEnabled(True)
         self.only_changes.setEnabled(self.report is not None)
         self.diff.setColumnCount(6)
         self.diff.setHorizontalHeaderLabels(self.tr2(["Parametri","Ensimmäinen","Toinen","Yksikkö","Tila","Avain"],["Parameter","First","Second","Unit","Status","Key"]))
@@ -146,6 +154,7 @@ class OfflinePage(QWidget):
         self.tabs.setTabText(1,self.tr2("Raakadata","Raw data"))
         self.tabs.setTabText(2,self.tr2("Asetuserot","Settings comparison"))
         self.tabs.setTabText(3,self.tr2("Raakadataerot","Raw differences"))
+        self.restore_button.setText(self.tr2('Palautussuunnitelma','Restore preview'))
         self.compare_button.setText(self.tr2("Vertaa varmuuskopioon","Compare backup"))
         self.only_changes.setText(self.tr2("Näytä vain muuttuneet asetukset","Show changed settings only"))
         self.populate()
