@@ -6,7 +6,10 @@ name = "ouman-eh203"
 version = "0.1.0a1"
 requires-python = ">=3.11"
 dependencies = ["pyserial>=3.5"]
+[project.optional-dependencies]
+gui = ["PySide6>=6.7"]
 [project.scripts]
+ouman-eh203-gui = "ouman_eh203.gui:main"
 ouman-eh203 = "ouman_eh203.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
