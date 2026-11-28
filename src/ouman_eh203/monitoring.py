@@ -5,11 +5,34 @@ from .protocol import request, classify
 from .transport import open_serial, exchange
 from .simulator import SimulatedSerial
 
-POLL_IDS = (18, 20, 21)
+POLL_IDS = (18, 20, 21, 15, 16, 42, 45, 51)
+ACTIVE_KEYS = {18, 20, 21, "l1_target", "dhw_target", "dhw_valve",
+               "l1_mode", "l2_mode", "dhw_mode", "r1", "r2"}
+
+def decode_samples(pid, data):
+    if pid in (18, 20, 21):
+        return [(pid, temperature(data))]
+    minimum = {15: 15, 16: 3, 42: 2, 45: 2, 51: 1}[pid]
+    if len(data) < minimum:
+        raise ValueError(f"Short response for ID {pid}")
+    if pid == 15:
+        return [("l1_target", data[14])]
+    if pid == 16:
+        return [("dhw_target", int.from_bytes(data[1:3], "big") / 10)]
+    if pid == 42:
+        return [("l1_mode", data[1] & 15), ("l2_mode", data[1] >> 4),
+                ("dhw_mode", data[0] & 15)]
+    if pid == 45:
+        return [("r1", bool(data[1] & 8)), ("r2", bool(data[1] & 16))]
+    if data[0] > 100:
+        raise ValueError("Invalid DHW command percentage")
+    return [("dhw_valve", data[0])]
 
 def demo_serial():
     return SimulatedSerial({1: b"DEMO", 18: bytes.fromhex("fe0c"),
-                            20: bytes.fromhex("0af0"), 21: bytes.fromhex("0834")})
+                            20: bytes.fromhex("0af0"), 21: bytes.fromhex("0834"), 15: bytes(14)+bytes([30]),
+                            16: bytes.fromhex("000244"), 42: bytes.fromhex("0021"),
+                            45: bytes.fromhex("0008"), 51: bytes([26])})
 
 def read_block(ser, pid):
     status, data, error = classify(exchange(ser, request(pid)), pid)
@@ -43,7 +66,9 @@ class OperationManager:
                     if self.stop_event.is_set():
                         break
                     data = read_block(ser, pid)
-                    sample(pid, temperature(data), datetime.now(timezone.utc).isoformat())
+                    stamp = datetime.now(timezone.utc).isoformat()
+                    for key, value in decode_samples(pid, data):
+                        sample(key, value, stamp)
                 self.stop_event.wait(self.interval)
         finally:
             close = getattr(ser, "close", None)
