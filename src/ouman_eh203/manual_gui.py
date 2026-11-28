@@ -114,7 +114,7 @@ class ManualSettings(QDialog):
         self.active_code = code
         self.worker = AcquireWorker(source, remote, self)
         self.worker.result.connect(self.received)
-        self.worker.finished.connect(self.finished)
+        self.worker.finished.connect(self._on_acquire_finished)
         for widget in self.controls:
             widget.setEnabled(False)
         self.status.setText(self.tr2("Luetaan PDF-tiedostoa…", "Reading PDF…"))
@@ -130,7 +130,7 @@ class ManualSettings(QDialog):
         except Exception as exc:
             self.status.setText(str(exc))
 
-    def finished(self):
+    def _on_acquire_finished(self):
         self.worker.deleteLater()
         self.worker = None
         for widget in self.controls:
