@@ -17,6 +17,7 @@ from .transport import open_serial
 class BenchWorker(QThread):
     outcome = Signal(object, str)
     progress = Signal(int, int)
+    phase = Signal(str, int)
 
     def __init__(self, port, path, parent, snapshot=None, approved=None, journal=None):
         super().__init__(parent)
@@ -26,13 +27,15 @@ class BenchWorker(QThread):
     def run(self):
         try:
             if self.approved is None:
+                self.phase.emit('initial_capture', 0)
                 with open_serial(self.port) as ser:
                     result = acquire(ser, self.path, 0.05, quick=True, progress=self.progress.emit)
                 verify_file(result)
                 self.outcome.emit(result, str(self.path))
             else:
                 result = execute_draft(self.port, self.snapshot, self.approved,
-                    self.path, self.journal, confirmation='BENCH', progress=self.progress.emit)
+                    self.path, self.journal, confirmation='BENCH', progress=self.progress.emit,
+                    phase=self.phase.emit)
                 self.outcome.emit(result, str(self.journal))
         except Exception as exc:
             self.outcome.emit(None, str(exc) + (' | ' + str(self.journal) if self.journal else ''))
@@ -43,6 +46,7 @@ class BenchParameterDialog(QDialog):
         super().__init__(parent)
         self.port, self.lang = port, lang
         self.worker = self.snapshot = None
+        self.phase_text = ''
         self.original = {}
         self.values = {}
         self.approved = None
@@ -191,13 +195,30 @@ class BenchParameterDialog(QDialog):
     def start(self, worker, callback):
         self.worker = worker
         self.controls()
+        worker.phase.connect(self.show_phase)
         worker.progress.connect(self.show_progress)
         worker.outcome.connect(callback)
         worker.finished.connect(self.finished_worker)
         worker.start()
 
+    def show_phase(self, phase, pid):
+        labels = {
+            'initial_capture': ('Luetaan testilaitteen asetuksia', 'Reading controller settings'),
+            'check': ('Tarkistetaan laitteen nykytila', 'Checking current controller state'),
+            'backup': ('Otetaan turvavarmuuskopio', 'Creating safety backup'),
+            'check_step': (f'Tarkistetaan nykytila ennen ID {pid}:n kirjoitusta', f'Checking state before writing ID {pid}'),
+            'write': (f'Kirjoitetaan ID {pid}', f'Writing ID {pid}'),
+            'settle': (f'Odotetaan ID {pid}:n muutoksen asettumista', f'Waiting for ID {pid} to settle'),
+            'readback': (f'Luetaan takaisin ID {pid} ja tarkistetaan muut lohkot', f'Reading back ID {pid} and checking other blocks'),
+            'verified': (f'ID {pid} varmennettu', f'ID {pid} verified'),
+            'final_check': ('Varmennetaan lopputila', 'Verifying final state'),
+            'final_capture': ('Luetaan lopulliset asetukset', 'Reading final settings'),
+        }
+        self.phase_text = self.t(*labels[phase])
+        self.status.setText(self.phase_text + '…')
+
     def show_progress(self, count, total):
-        self.status.setText(f'{count}/{total}')
+        self.status.setText(f'{self.phase_text} · {count}/{total}')
 
     def capture_done(self, result, detail):
         self.set_snapshot(result)
