@@ -2,12 +2,14 @@
 import sys
 from serial.tools.list_ports import comports
 from pathlib import PurePath
+from threading import Event
+from .backup import acquire, verify_file
 from .monitoring import OperationManager
 from .dashboard import Dashboard
 from .curve_gui import CurvePage
 from PySide6.QtCore import QSettings, QThread, Signal
 from PySide6.QtWidgets import (QApplication, QWidget, QMainWindow, QVBoxLayout,
-    QHBoxLayout, QLabel, QPushButton, QComboBox, QLineEdit, QTabWidget)
+    QHBoxLayout, QLabel, QPushButton, QComboBox, QLineEdit, QTabWidget, QFileDialog, QProgressDialog)
 from .protocol import request, classify
 from .transport import open_serial, exchange
 from .simulator import SimulatedSerial
@@ -55,11 +57,38 @@ class MonitorWorker(QThread):
         except Exception as exc:
             self.failed.emit(str(exc))
 
+class BackupWorker(QThread):
+    progress = Signal(int, int)
+    outcome = Signal(str, str)
+
+    def __init__(self, port, path, parent=None):
+        super().__init__(parent)
+        self.port, self.path = port, path
+        self.cancel = Event()
+
+    def run(self):
+        try:
+            ser = open_serial(self.port)
+            try:
+                result = acquire(ser, self.path, 0.05, progress=self.progress.emit,
+                                 cancelled=self.cancel.is_set)
+            finally:
+                ser.close()
+            if not result['complete']:
+                self.outcome.emit("partial", self.path)
+                return
+            verify_file(result)
+            self.outcome.emit("verified", self.path)
+        except Exception as exc:
+            self.outcome.emit("error", str(exc))
+
+
 class Window(QMainWindow):
     def __init__(self, settings=None):
         super().__init__()
         self.settings = settings if settings is not None else QSettings("EH203Manager", "Desktop")
         self.worker = None
+        self.backup_worker = None
         self.setWindowTitle("Ouman EH-203 Manager")
         self.resize(1050, 640)
         root = QWidget()
@@ -108,6 +137,12 @@ class Window(QMainWindow):
             page = QWidget()
             box = QVBoxLayout(page)
             box.addWidget(label)
+            self.backup_button = QPushButton()
+            self.backup_button.clicked.connect(self.start_backup)
+            box.addWidget(self.backup_button)
+            self.backup_status = QLabel()
+            self.backup_status.setWordWrap(True)
+            box.addWidget(self.backup_status)
             box.addStretch()
             self.tabs.addTab(page, "")
         self.curves = CurvePage(self.monitor.open_help)
@@ -119,6 +154,55 @@ class Window(QMainWindow):
         self.translate()
         self.reset_status()
         self.scan_ports()
+
+    def backup_enabled(self):
+        self.backup_button.setEnabled(self.mode.currentIndex() == 1 and
+            self.session is None and self.worker is None and self.backup_worker is None)
+
+    def start_backup(self):
+        if not self.backup_button.isEnabled():
+            return
+        fi = self.language.currentText() == "fi"
+        path, _ = QFileDialog.getSaveFileName(self, "Varmuuskopio" if fi else "Backup",
+                                              "eh203-backup.json", "JSON (*.json)")
+        if not path:
+            return
+        self.backup_worker = BackupWorker(self.port.text().strip(), path, self)
+        self.backup_dialog = QProgressDialog("Luetaan 256 parametria" if fi else "Reading 256 parameters",
+                                            "Keskeytä" if fi else "Cancel", 0, 256, self)
+        self.backup_dialog.setAutoClose(False)
+        self.backup_dialog.setAutoReset(False)
+        self.backup_dialog.canceled.connect(self.backup_worker.cancel.set)
+        self.backup_worker.progress.connect(self.backup_progress)
+        self.backup_worker.outcome.connect(self.backup_outcome)
+        self.backup_worker.finished.connect(self.backup_finished)
+        for widget in (self.connect_button, self.mode, self.port, self.language,
+                       self.scan_button, self.port_choices, self.live_button):
+            widget.setEnabled(False)
+        self.backup_enabled()
+        self.backup_dialog.show()
+        self.backup_worker.start()
+
+    def backup_progress(self, count, total):
+        if not self.backup_worker.cancel.is_set():
+            self.backup_dialog.setValue(count)
+
+    def backup_outcome(self, state, detail):
+        fi = self.language.currentText() == "fi"
+        labels = {"verified": ("Raakakaappaus varmennettu", "Raw capture verified"),
+                  "partial": ("Keskeneräinen kaappaus", "Incomplete capture"),
+                  "error": ("Virhe; mahdollinen osittainen tiedosto", "Error; partial file may exist")}
+        self.backup_status.setText(labels[state][0 if fi else 1] + ": " + detail)
+
+    def backup_finished(self):
+        self.backup_dialog.hide()
+        self.backup_dialog.deleteLater()
+        self.backup_worker.deleteLater()
+        self.backup_worker = None
+        for widget in (self.connect_button, self.mode, self.port, self.language,
+                       self.scan_button, self.port_choices, self.live_button):
+            widget.setEnabled(True)
+        self.backup_enabled()
 
     def select_port(self, index):
         port = self.port_choices.itemData(index)
@@ -166,6 +250,7 @@ class Window(QMainWindow):
             widget.setEnabled(False)
         self.live_button.setText("Katkaise" if self.language.currentText() == "fi" else "Disconnect")
         self.status.setText("…")
+        self.backup_enabled()
         self.session.start()
 
     def monitor_identity(self, detail):
@@ -191,6 +276,7 @@ class Window(QMainWindow):
         self.live_button.setText("Yhdistä" if fi else "Connect")
         self.monitor.end()
         self.curves.end()
+        self.backup_enabled()
         if self.closing:
             self.close()
         if not self.status.text().startswith(("Virhe:", "Error:")):
@@ -214,11 +300,14 @@ class Window(QMainWindow):
         self.monitor.translate(lang)
         self.curves.translate(lang)
         self.tabs.setTabText(2, 'Lämmityskäyrät' if lang == 'fi' else 'Heating curves')
-        self.config.setText(s[7])
+        self.config.setText('Katkaise käytönvalvontayhteys ennen varmuuskopiointia. Raakakaappaus ei takaa kaikkien asetusten palautettavuutta.' if lang == 'fi' else 'Disconnect monitoring before backup. Raw capture does not guarantee restoration of every setting.')
+        self.backup_button.setText('Ota varmuuskopio' if lang == 'fi' else 'Create backup')
+        self.backup_enabled()
         if self.worker is None:
             self.status.setText(s[3])
 
     def reset_status(self, *_):
+        self.backup_enabled()
         self.port.setEnabled(self.mode.currentIndex() == 1 and self.worker is None)
         self.status.setToolTip('')
         self.status.setText(STRINGS[self.language.currentText()][3])
@@ -240,6 +329,7 @@ class Window(QMainWindow):
         self.live_button.setEnabled(False)
         self.scan_button.setEnabled(False)
         self.port_choices.setEnabled(False)
+        self.backup_enabled()
         self.worker.start()
 
     def show_outcome(self, ok, detail):
@@ -251,6 +341,7 @@ class Window(QMainWindow):
     def finish_probe(self):
         self.worker.deleteLater()
         self.worker = None
+        self.backup_enabled()
         self.live_button.setEnabled(True)
         self.scan_button.setEnabled(True)
         self.port_choices.setEnabled(True)
@@ -259,6 +350,10 @@ class Window(QMainWindow):
         self.port.setEnabled(self.mode.currentIndex() == 1)
 
     def closeEvent(self, event):
+        if self.backup_worker is not None:
+            self.backup_worker.cancel.set()
+            event.ignore()
+            return
         if self.session is not None:
             self.closing = True
             self.session.manager.stop()

@@ -34,10 +34,14 @@ User-initiated download or local PDF import only. No bundled manufacturer PDFs o
 2. Help system: manual manager, metadata audit and page navigation.
 3. Monitoring: prioritized polling, snapshots, status and stale-data handling.
 4. Visualization: PyQtGraph candidate; heating curves, trends and weekly schedules with event order and weekday masks. Persistent SQLite history optional later.
-5. Backup and comparison: full capture, independent pass, identity/integrity checks, private paths, no overwrite, raw and decoded differences.
+5. Backup and comparison: D1 full capture with progress/cancellation (disconnect monitoring first); D2 offline inspection; D3 independent pass and raw/decoded comparison; D4 initialize simulator from a single verified backup, preserving source and missing blocks. Clearly label captured measurements as historical; no implicit factory defaults.
 6. Guided restore: existing validated executor, dry-run, dependencies/exclusions, explicit isolated bench confirmation, manual reset/power cycle, journal and persistence checks.
 7. Parameter editor: enable only individually validated transitions; manual fallback for unsupported parameters.
 8. Acceptance: preserve core tests, CI on supported Python versions, simulator and offscreen tests, Fedora KDE and isolated hardware acceptance, AppImage smoke test. No release/tag without agreement.
+
+## Simulation extension
+
+Keep default demo and backup-based simulation separate from physical transport. Use an in-memory working copy; never modify the original backup. Factory reset requires a separately verified compatible factory capture. Simulated writes do not establish physical acceptance. Future optional sensor manipulation and thermal dynamics require separate validation.
 
 ## Known limitations
 
