@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (QDialog,QVBoxLayout,QPushButton,QLabel,QFileDialog,
-    QTableWidget,QTableWidgetItem,QAbstractItemView,QMessageBox)
+    QTableWidget,QTableWidgetItem,QAbstractItemView,QMessageBox,QCheckBox)
 from .backup import load, acquire, verify_file
 from .restore import plan, execute_simulated, block_identity
 from .transport import open_serial
@@ -67,6 +67,16 @@ class RestoreDialog(QDialog):
         layout.addWidget(self.target_label)
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
+        self.fields = []
+        self.technical = QPushButton(self.tr2('Tekniset tiedot','Technical details'))
+        self.technical.setEnabled(False)
+        self.technical.clicked.connect(self.show_technical)
+        self.technical_text = ''
+        layout.addWidget(self.technical)
+        self.only_changes = QCheckBox(self.tr2('Näytä vain muuttuvat asetukset','Show changed settings only'))
+        self.only_changes.setChecked(True)
+        self.only_changes.toggled.connect(self.populate_fields)
+        layout.addWidget(self.only_changes)
         self.table = QTableWidget(0,5)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setHorizontalHeaderLabels(self.tr2(
@@ -97,7 +107,7 @@ class RestoreDialog(QDialog):
         self.apply_button.setEnabled(False)
         self.source_path = ""
         self.choose.setEnabled(False)
-        self.table.setRowCount(0)
+        self.clear_preview()
         self.status.setToolTip("")
         self.target_label.setText(self.tr2("Ei valittua kohdetta","No target selected"))
         self.source_label.setText(self.tr2("Ei valittua lähdettä","No source selected"))
@@ -118,7 +128,7 @@ class RestoreDialog(QDialog):
             return
         self.apply_button.setEnabled(False)
         self.approved_steps = None
-        self.table.setRowCount(0)
+        self.clear_preview()
         path = self.directory / (uuid4().hex + "-before.json")
         self.start_worker(RestoreWorker(self.port,self.sim,path,parent=self), self.capture_done)
 
@@ -162,7 +172,7 @@ class RestoreDialog(QDialog):
 
     def restore_done(self, result, detail):
         self.status.setText((self.tr2("Palautus varmennettu takaisinluvulla: ","Restore verified by readback: ") if result else self.tr2("Palautus keskeytyi; tarkista nykytila: ","Restore interrupted; inspect current state: "))+detail)
-        self.table.setRowCount(0)
+        self.clear_preview()
 
     def reject(self):
         if self.worker is None:
@@ -175,7 +185,7 @@ class RestoreDialog(QDialog):
             super().closeEvent(event)
 
     def open_target(self,path):
-        self.table.setRowCount(0)
+        self.clear_preview()
         self.status.setToolTip('')
         self.target_label.setText(self.tr2('Turvavarmuuskopio: ','Safety backup: ')+str(path))
         if self.source is None:
@@ -203,17 +213,36 @@ class RestoreDialog(QDialog):
                 QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:
                 self.status.setText(self.tr2("Peruutettu","Cancelled"))
                 return False
-        self.status.setText(str(path)+"\n"+identity+" · "+self.tr2("Vain suunnittelu","Preview only")+"\n"+
+        self.status.setText(identity+" · "+self.tr2("Vain suunnittelu","Preview only")+"\n"+
             (self.tr2("Ei varmennettua firmwareprofiilia; kaikki kirjoitukset estetty.","No validated firmware profile; all writes blocked.") if not report["compatible"] else
-            self.tr2("Suunnitellut kirjoitus-ID:t: ","Planned write IDs: ")+str(report["steps"])+"\n"+
+            self.tr2("Suunnitellut kirjoitusoperaatiot: ","Planned write operations: ")+str(len(report["steps"]))+"\n"+
             self.tr2("Palautusmoottorin ulkopuoliset ID:t: ","IDs outside restore engine: ")+str(len(report["excluded_ids"]))))
-        self.status.setToolTip(self.tr2("Palautusmoottorin ulkopuoliset ID:t: ","IDs outside restore engine: ")+str(report["excluded_ids"]))
+        self.technical_text = self.tr2("Suunnitellut kirjoitus-ID:t: ","Planned write IDs: ")+str(report["steps"])+"\n"+self.tr2("Palautusmoottorin ulkopuoliset ID:t: ","IDs outside restore engine: ")+str(report["excluded_ids"])
+        self.technical.setEnabled(True)
         if report["status"] == "blocked":
-            self.status.setText(str(path)+"\n"+identity+"\n"+self.tr2("Palautus estetty – ei hyväksyttyä kirjoitussuunnitelmaa: ","Restore blocked – no approved write plan: ")+report["reason"])
+            self.status.setText(identity+"\n"+self.tr2("Palautus estetty – ei hyväksyttyä kirjoitussuunnitelmaa: ","Restore blocked – no approved write plan: ")+report["reason"])
         elif report["status"] == "no_changes":
-            self.status.setText(str(path)+"\n"+identity+"\n"+self.tr2("Palautusmoottorin lohkot ovat samat. Ei kirjoitustarvetta; tämä ei takaa koko konfiguraation yhtäläisyyttä.","Restore engine blocks match. No writes needed; this does not prove complete configuration equality."))
-        self.table.setRowCount(len(report["fields"]))
-        for row,(key,before,after,unit) in enumerate(report["fields"]):
+            self.status.setText(identity+"\n"+self.tr2("Palautusmoottorin lohkot ovat samat. Ei kirjoitustarvetta; tämä ei takaa koko konfiguraation yhtäläisyyttä.","Restore engine blocks match. No writes needed; this does not prove complete configuration equality."))
+        self.fields = report["fields"]
+        if report["compatible"]:
+            count = sum(before != after for _,before,after,_ in self.fields)
+            self.status.setText(self.status.text()+"\n"+self.tr2("Tunnettujen asetusten erot: ","Known setting differences: ")+str(count))
+        self.populate_fields()
+        return True
+
+    def clear_preview(self):
+        self.fields = []
+        self.technical_text = ""
+        self.technical.setEnabled(False)
+        self.table.setRowCount(0)
+
+    def show_technical(self):
+        QMessageBox.information(self,self.technical.text(),self.technical_text)
+
+    def populate_fields(self, *_):
+        fields = [field for field in self.fields if not self.only_changes.isChecked() or field[1] != field[2]]
+        self.table.setRowCount(len(fields))
+        for row,(key,before,after,unit) in enumerate(fields):
             for col,value in enumerate((PARAMETERS[key]["label"].get(self.lang) or key,before,after,unit,
                 self.tr2("Muutos","Change") if before!=after else self.tr2("Sama","Same"))):
                 self.table.setItem(row,col,QTableWidgetItem(str(value)))
