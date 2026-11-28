@@ -155,6 +155,9 @@ class Window(QMainWindow):
             self.backup_status = QLabel()
             self.backup_status.setWordWrap(True)
             box.addWidget(self.backup_status)
+            self.edit_button = QPushButton()
+            self.edit_button.clicked.connect(self.open_parameter_editor)
+            box.addWidget(self.edit_button)
             self.offline = OfflinePage(self.monitor.open_help)
             self.offline.restore_callback = self.open_restore
             box.addWidget(self.offline, 1)
@@ -210,11 +213,20 @@ class Window(QMainWindow):
         dialog.exec()
         dialog.deleteLater()
 
+    def open_parameter_editor(self):
+        if not self.edit_button.isEnabled():
+            return
+        from .parameter_gui import ParameterDialog
+        dialog = ParameterDialog(self.snapshot_sim,self.language.currentText(),self.monitor.open_help,self)
+        dialog.exec()
+        dialog.deleteLater()
+
     def backup_enabled(self):
         idle = self.session is None and self.worker is None and self.backup_worker is None
         selected = self.mode.currentIndex() == 2
         ready = not selected or self.snapshot is not None
         self.backup_button.setEnabled(self.mode.currentIndex() == 1 and idle)
+        self.edit_button.setEnabled(selected and idle and self.snapshot is not None)
         self.offline.restore_button.setEnabled(idle)
         self.snapshot_button.setEnabled(selected and idle)
         self.connect_button.setEnabled(idle and ready)
@@ -380,6 +392,7 @@ class Window(QMainWindow):
         self.curves.translate(lang)
         self.tabs.setTabText(2, 'Lämmityskäyrät' if lang == 'fi' else 'Heating curves')
         self.config.setText('Katkaise käytönvalvontayhteys ennen varmuuskopiointia. Raakakaappaus ei takaa kaikkien asetusten palautettavuutta.' if lang == 'fi' else 'Disconnect monitoring before backup. Raw capture does not guarantee restoration of every setting.')
+        self.edit_button.setText('Muokkaa simulaattorin asetuksia' if lang=='fi' else 'Edit simulator settings')
         self.offline.translate(lang)
         self.translate_backup_status()
         self.backup_button.setText('Ota varmuuskopio' if lang == 'fi' else 'Create backup')
