@@ -83,9 +83,8 @@ class OfflinePage(QWidget):
         return True
 
     def open_restore(self):
-        if self.snapshot is not None:
-            from .restore_gui import RestoreDialog
-            RestoreDialog(self.snapshot,self.lang,self).exec()
+        from .restore_gui import RestoreDialog
+        RestoreDialog(None,self.lang,self).exec()
 
     def choose_comparison(self):
         path,_ = QFileDialog.getOpenFileName(self,self.tr2("Valitse toinen varmuuskopio","Choose second backup"),"","JSON (*.json)")
@@ -112,7 +111,7 @@ class OfflinePage(QWidget):
 
     def populate_comparison(self):
         self.compare_button.setEnabled(self.snapshot is not None)
-        self.restore_button.setEnabled(self.snapshot is not None)
+        self.restore_button.setEnabled(True)
         self.only_changes.setEnabled(self.report is not None)
         self.diff.setColumnCount(6)
         self.diff.setHorizontalHeaderLabels(self.tr2(["Parametri","Ensimmäinen","Toinen","Yksikkö","Tila","Avain"],["Parameter","First","Second","Unit","Status","Key"]))
