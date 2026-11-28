@@ -9,16 +9,17 @@ from .monitoring import OperationManager
 from .dashboard import Dashboard
 from .curve_gui import CurvePage
 from PySide6.QtCore import QSettings, QThread, Signal
+from PySide6.QtGui import QPalette, QColor
 from PySide6.QtWidgets import (QApplication, QWidget, QMainWindow, QVBoxLayout,
-    QHBoxLayout, QLabel, QPushButton, QComboBox, QLineEdit, QTabWidget, QFileDialog, QProgressDialog, QMessageBox)
+    QHBoxLayout, QLabel, QPushButton, QComboBox, QLineEdit, QTabWidget, QFileDialog, QProgressDialog, QMessageBox, QGroupBox)
 from .protocol import request, classify
 from .transport import open_serial, exchange
 from .simulator import SimulatedSerial
 
 STRINGS = {
-    "en": ("Monitoring", "Configuration", "Probe connection", "Not connected",
+    "en": ("Monitoring", "Configuration", "Probe connection", "Monitoring stopped",
            "Simulator", "Serial port", "Identity response (hex)", "Read-only foundation; configuration tools are planned."),
-    "fi": ("Käytönvalvonta", "Asetusten hallinta", "Testaa yhteys", "Ei yhteyttä",
+    "fi": ("Käytönvalvonta", "Asetusten hallinta", "Testaa yhteys", "Käytönvalvonta ei käynnissä",
            "Simulaattori", "Sarjaportti", "Tunnistevastaus (hex)", "Vain luku; asetustyökalut ovat suunnitteilla."),
 }
 
@@ -155,27 +156,47 @@ class Window(QMainWindow):
             box.addWidget(label)
             self.backup_button = QPushButton()
             self.backup_button.clicked.connect(self.start_backup)
-            box.addWidget(self.backup_button)
+            self.backup_group = QGroupBox()
+            backup_layout = QVBoxLayout(self.backup_group)
+            backup_layout.addWidget(self.backup_button)
+            action_row = QHBoxLayout()
+            action_row.addWidget(self.backup_group, 1)
+            box.addLayout(action_row)
             self.backup_result = None
             self.backup_status = QLabel()
             self.backup_status.setWordWrap(True)
-            box.addWidget(self.backup_status)
+            backup_layout.addWidget(self.backup_status)
+            self.backup_hint = QLabel()
+            self.backup_hint.setWordWrap(True)
+            backup_layout.addWidget(self.backup_hint)
+            self.write_group = QGroupBox()
+            write_layout = QVBoxLayout(self.write_group)
+            write_row = QHBoxLayout()
+            write_layout.addLayout(write_row)
+            action_row.addWidget(self.write_group, 2)
             self.edit_button = QPushButton()
             self.edit_button.clicked.connect(self.open_parameter_editor)
-            box.addWidget(self.edit_button)
+            write_row.addWidget(self.edit_button)
             self.bench_edit_button = QPushButton()
             self.bench_edit_button.clicked.connect(self.open_bench_editor)
-            box.addWidget(self.bench_edit_button)
+            write_row.addWidget(self.bench_edit_button)
             self.offline = OfflinePage(self.monitor.open_help)
             self.offline.restore_callback = self.open_restore
+            write_row.addWidget(self.offline.restore_button)
+            self.write_hint = QLabel()
+            self.write_hint.setWordWrap(True)
+            write_layout.addWidget(self.write_hint)
+            self.inspection_group = QGroupBox()
+            inspection_layout = QVBoxLayout(self.inspection_group)
             self.use_backup_button = QPushButton()
             self.use_backup_button.clicked.connect(self.use_open_backup)
-            box.addWidget(self.use_backup_button)
+            inspection_layout.addWidget(self.use_backup_button)
             self.offline.open_button.clicked.connect(self.backup_enabled)
             self.offline.table.cellDoubleClicked.connect(self.edit_table_parameter)
             self.offline.editable_callback = self.editable_keys
             self.offline.simulation_open = self.open_configuration_path
-            box.addWidget(self.offline, 1)
+            inspection_layout.addWidget(self.offline, 1)
+            box.addWidget(self.inspection_group, 1)
             self.tabs.addTab(page, "")
         self.curves = CurvePage(self.monitor.open_help)
         self.tabs.addTab(self.curves, '')
@@ -211,7 +232,9 @@ class Window(QMainWindow):
     def open_configuration_path(self, path):
         if self.mode.currentIndex() == 2:
             return self.load_snapshot(path)
-        return self.offline.open_path(path)
+        result = self.offline.open_path(path)
+        self.backup_enabled()
+        return result
 
     def use_open_backup(self):
         if self.offline.snapshot is not None and self.use_backup_button.isEnabled():
@@ -278,7 +301,7 @@ class Window(QMainWindow):
         from PySide6.QtWidgets import QMessageBox
         from .restore_gui import RestoreDialog
         mode = self.mode.currentIndex()
-        if mode == 0 or (mode == 2 and self.snapshot is None):
+        if mode == 0 or (mode == 1 and not self.port.text().strip()) or (mode == 2 and self.snapshot is None):
             QMessageBox.information(self,self.windowTitle(), 'Valitse sarjaportti tai lataa simulaattorin varmuuskopio.' if self.language.currentText()=='fi' else 'Select serial port or load a simulator backup.')
             return
         dialog = RestoreDialog(None,self.language.currentText(),self,port=self.port.text().strip(),sim=self.snapshot_sim if mode==2 else None)
@@ -308,16 +331,62 @@ class Window(QMainWindow):
         dialog.deleteLater()
         self.reset_status()
 
+    def accent(self, widget, role):
+        # Keep native backgrounds, disabled colors and focus rendering.
+        palette = QApplication.palette()
+        dark = palette.color(QPalette.ColorRole.Window).lightness() < 128
+        colors = {'read': ('#17568d', '#9ad0ff'),
+                  'write': ('#934400', '#ffbc80'),
+                  'success': ('#216b39', '#9be5ae')}
+        if role in colors:
+            color = QColor(colors[role][int(dark)])
+            target = QPalette.ColorRole.ButtonText if isinstance(widget, QPushButton) else QPalette.ColorRole.WindowText
+            for group in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive):
+                palette.setColor(group, target, color)
+        widget.setPalette(palette)
+
+    def configuration_hint(self):
+        fi = self.language.currentText() == 'fi'
+        mode = self.mode.currentIndex()
+        if self.session is not None:
+            text = ('Käytönvalvonta varaa yhteyden. Pysäytä valvonta ennen asetusten hallintaa.' if fi else
+                    'Monitoring owns the connection. Stop monitoring before managing settings.')
+            role = None
+        elif self.worker is not None or self.backup_worker is not None:
+            text = 'Toiminto käynnissä. Odota sen päättymistä.' if fi else 'An operation is in progress. Wait for it to finish.'
+            role = None
+        elif mode == 1 and self.port.text().strip():
+            text = ('Valvonta pysäytetty. Asetustoiminnot avaavat sarjaportin automaattisesti; valvontaa ei tarvitse käynnistää.' if fi else
+                    'Monitoring stopped. Settings operations open the serial port automatically; no need to start monitoring.')
+            role = 'success'
+        elif mode == 1:
+            text = 'Valitse sarjaportti ensin.' if fi else 'Select a serial port first.'
+            role = None
+        elif mode == 2:
+            text = ('Simulaattoritila: muutokset eivät vaikuta fyysiseen säätimeen.' if fi else
+                    'Simulator mode: changes do not affect a physical controller.') if self.snapshot is not None else ('Avaa varmuuskopio tai simulaatio ensin.' if fi else 'Open a backup or simulation first.')
+            role = None
+        else:
+            text = ('Esittelysimulaattori: asetusten muokkaus vaatii varmuuskopion.' if fi else
+                    'Demo simulator: editing settings requires a backup.')
+            role = None
+        self.config.setText(text)
+        self.accent(self.config, role)
+
     def backup_enabled(self):
         idle = self.session is None and self.worker is None and self.backup_worker is None
         selected = self.mode.currentIndex() == 2
-        ready = not selected or self.snapshot is not None
-        self.backup_button.setEnabled(self.mode.currentIndex() == 1 and idle)
-        self.edit_button.setEnabled(selected and idle and self.snapshot is not None)
-        self.bench_edit_button.setVisible(self.mode.currentIndex() == 1)
-        self.bench_edit_button.setEnabled(self.mode.currentIndex() == 1 and idle and bool(self.port.text().strip()))
-        self.offline.restore_button.setEnabled(idle)
-        self.use_backup_button.setVisible(not selected)
+        physical = self.mode.currentIndex() == 1
+        ready = bool(self.port.text().strip()) if physical else not selected or self.snapshot is not None
+        self.backup_group.setVisible(physical)
+        self.write_group.setVisible(physical or selected)
+        self.backup_button.setEnabled(physical and idle and ready)
+        self.edit_button.setVisible(selected)
+        self.edit_button.setEnabled(selected and idle and ready)
+        self.bench_edit_button.setVisible(physical)
+        self.bench_edit_button.setEnabled(physical and idle and ready)
+        self.offline.restore_button.setEnabled((physical or selected) and idle and ready)
+        self.use_backup_button.setVisible(not selected and self.offline.snapshot is not None and self.offline.simulation is None)
         self.use_backup_button.setEnabled(idle and self.offline.snapshot is not None and self.offline.simulation is None)
         self.offline.open_button.setEnabled(idle)
         self.save_scenario_button.setVisible(selected)
@@ -328,6 +397,12 @@ class Window(QMainWindow):
         self.snapshot_button.setEnabled(selected and idle)
         self.connect_button.setEnabled(idle and ready)
         self.live_button.setEnabled(self.session is not None or (idle and ready))
+        self.configuration_hint()
+        self.write_hint.setText(('Vain eristetty testilaite. Kirjoittaminen vaatii vahvistuksen.' if fi else 'Isolated bench only. Writing requires confirmation.') if physical else ('Muutokset kohdistuvat vain simulaattoriin.' if fi else 'Changes affect the simulator only.'))
+        for widget in (self.connect_button, self.backup_button, self.offline.open_button, self.offline.compare_button):
+            self.accent(widget, 'read')
+        self.accent(self.bench_edit_button, 'write')
+        self.accent(self.offline.restore_button, 'write' if physical else None)
 
     def start_backup(self):
         if not self.backup_button.isEnabled():
@@ -374,6 +449,7 @@ class Window(QMainWindow):
                   "partial": ("Keskeneräinen kaappaus", "Incomplete capture"),
                   "error": ("Virhe; mahdollinen osittainen tiedosto", "Error; partial file may exist")}
         self.backup_status.setText(labels[state][0 if fi else 1] + ": " + detail)
+        self.accent(self.backup_status, 'success' if state == 'verified' else None)
 
     def backup_finished(self):
         self.backup_dialog.hide()
@@ -411,7 +487,7 @@ class Window(QMainWindow):
             self.session.manager.stop()
             self.live_button.setEnabled(False)
             return
-        if self.worker is not None:
+        if self.worker is not None or self.backup_worker is not None:
             return
         simulated = self.mode.currentIndex() != 1
         factory = self.snapshot_factory()
@@ -432,8 +508,9 @@ class Window(QMainWindow):
         for widget in (self.connect_button, self.mode, self.port, self.language,
                        self.scan_button, self.port_choices):
             widget.setEnabled(False)
-        self.live_button.setText("Katkaise" if self.language.currentText() == "fi" else "Disconnect")
+        self.live_button.setText("Pysäytä valvonta" if self.language.currentText() == "fi" else "Stop monitoring")
         self.status.setText("…")
+        self.accent(self.status, None)
         self.backup_enabled()
         self.session.start()
 
@@ -442,13 +519,15 @@ class Window(QMainWindow):
         if self.mode.currentIndex() == 2:
             prefix = "Varmuuskopiosimulaattori" if self.language.currentText()=="fi" else "Backup simulator"
         self.status.setToolTip(detail)
-        self.status.setText(f"{prefix} · " + ("Yhteys muodostettu" if self.language.currentText() == "fi" else "Connected"))
+        self.status.setText(f"{prefix} · " + ("Käytönvalvonta käynnissä" if self.language.currentText() == "fi" else "Monitoring active"))
+        self.accent(self.status, 'success')
 
     def monitor_sample(self, pid, value, stamp):
         self.monitor.update_sample(pid, value, stamp)
         self.curves.update_sample(pid, value, stamp)
 
     def monitor_error(self, detail):
+        self.accent(self.status, None)
         self.status.setText(("Virhe: " if self.language.currentText() == "fi" else "Error: ") + detail)
 
     def monitor_finished(self):
@@ -459,14 +538,15 @@ class Window(QMainWindow):
             widget.setEnabled(True)
         self.port.setEnabled(self.mode.currentIndex() == 1)
         fi = self.language.currentText() == "fi"
-        self.live_button.setText("Yhdistä" if fi else "Connect")
+        self.live_button.setText("Käynnistä valvonta" if fi else "Start monitoring")
         self.monitor.end()
         self.curves.end()
         self.backup_enabled()
         if self.closing:
             self.close()
         if not self.status.text().startswith(("Virhe:", "Error:")):
-            self.status.setText("Ei yhteyttä" if fi else "Disconnected")
+            self.status.setText(STRINGS[self.language.currentText()][3])
+        self.accent(self.status, None)
 
     def open_manual_settings(self):
         from .manual_gui import ManualSettings
@@ -479,7 +559,8 @@ class Window(QMainWindow):
         self.tabs.setTabText(0, s[0])
         self.tabs.setTabText(1, s[1])
         self.connect_button.setText(s[2])
-        self.live_button.setText('Yhdistä' if lang == 'fi' else 'Connect')
+        self.live_button.setText('Käynnistä valvonta' if lang == 'fi' else 'Start monitoring')
+        self.live_button.setToolTip('Käynnistää jatkuvan käytönvalvonnan, ei asetusten muokkausta.' if lang == 'fi' else 'Starts continuous monitoring, not settings editing.')
         self.manual_button.setToolTip('Dokumentaatio' if lang == 'fi' else 'Documentation')
         self.mode.setItemText(0, s[4])
         self.mode.setItemText(1, s[5])
@@ -488,10 +569,14 @@ class Window(QMainWindow):
         self.monitor.translate(lang)
         self.curves.translate(lang)
         self.tabs.setTabText(2, 'Lämmityskäyrät' if lang == 'fi' else 'Heating curves')
-        self.config.setText('Katkaise käytönvalvontayhteys ennen varmuuskopiointia. Raakakaappaus ei takaa kaikkien asetusten palautettavuutta.' if lang == 'fi' else 'Disconnect monitoring before backup. Raw capture does not guarantee restoration of every setting.')
+        self.backup_group.setTitle('Varmuuskopiointi' if lang == 'fi' else 'Backup')
+        self.write_group.setTitle('Asetusten muuttaminen' if lang == 'fi' else 'Edit settings')
+        self.inspection_group.setTitle('Varmuuskopioiden tarkastelu' if lang == 'fi' else 'Inspect backups')
+        self.backup_hint.setText('Raakakaappaus ei takaa kaikkien asetusten palautettavuutta.' if lang == 'fi' else 'Raw capture does not guarantee restoration of every setting.')
+        self.backup_button.setToolTip(self.backup_hint.text())
         self.edit_button.setText('Muokkaa simulaattorin asetuksia' if lang=='fi' else 'Edit simulator settings')
         self.bench_edit_button.setText('Muokkaa testilaitteen asetuksia (kokeellinen)' if lang=='fi' else 'Edit bench controller settings (experimental)')
-        self.use_backup_button.setText('Käytä avattua varmuuskopiota simulaattorissa' if lang=='fi' else 'Use opened backup in simulator')
+        self.use_backup_button.setText('Siirry simulaattoriin avatulla varmuuskopiolla' if lang=='fi' else 'Switch to simulator with opened backup')
         self.save_scenario_button.setText('Tallenna simulaatio nimellä' if lang=='fi' else 'Save simulation as')
         self.offline.translate(lang)
         self.translate_backup_status()
@@ -526,12 +611,13 @@ class Window(QMainWindow):
             self.offline.path = ''
             self.offline.populate()
         self.backup_enabled()
-        self.port.setEnabled(self.mode.currentIndex() == 1 and self.worker is None)
+        self.port.setEnabled(self.mode.currentIndex() == 1 and self.worker is None and self.session is None and self.backup_worker is None)
         self.status.setToolTip('')
         self.status.setText(STRINGS[self.language.currentText()][3])
+        self.accent(self.status, None)
 
     def start_probe(self):
-        if self.worker is not None or self.session is not None:
+        if self.worker is not None or self.session is not None or self.backup_worker is not None:
             return
         simulated = self.mode.currentIndex() != 1
         factory = self.snapshot_factory()
@@ -547,6 +633,7 @@ class Window(QMainWindow):
         for widget in (self.connect_button, self.mode, self.port, self.language):
             widget.setEnabled(False)
         self.status.setText("…" )
+        self.accent(self.status, None)
         self.live_button.setEnabled(False)
         self.scan_button.setEnabled(False)
         self.port_choices.setEnabled(False)
@@ -560,6 +647,7 @@ class Window(QMainWindow):
             prefix = "Varmuuskopiosimulaattori" if fi else "Backup simulator"
         label = ("Testi onnistui" if fi else "Probe succeeded") if ok else ("Virhe" if fi else "Error")
         self.status.setText(f"{prefix}: {label}: {detail}")
+        self.accent(self.status, 'success' if ok else None)
 
     def finish_probe(self):
         self.worker.deleteLater()
