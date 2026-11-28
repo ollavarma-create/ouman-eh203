@@ -285,3 +285,14 @@ IDs below are decimal. Signed big-endian temperature / 100; existing missing-sen
 | 33 | Input 9, default L2 return | LCD comparison: 21.4 vs 21 C; provisional; input may be relabelled |
 
 T7 replacement resistor retained on the isolated bench to distinguish DHW channels. IDs 49/50 remained zero during the manual-control test; do not expose as verified percentages. No new write operations authorized.
+
+## Parallel shift: mirrored curve fields (firmware 2.15)
+
+IDs are decimal; offsets are zero-based payload offsets.
+
+| Parameter | Settings field | Automatic curve mirror | Encoding |
+|---|---|---|---|
+| L1 parallel shift | ID 12, offset 27 | ID 65, offset 9 | signed int8, 1 °C/LSB |
+| L2 parallel shift | ID 14, offset 23 | ID 66, offset 9 | signed int8, 1 °C/LSB |
+
+Physical bench observations on 2026-11-28: L1 -5 then -3 °C; L2 -4 °C. Both mirror predictions passed full restore-block readback and LCD comparison. The curve bytes are derived mirrors, not independent writable fields. Initial mirror mismatch blocks a shift change; restore additionally checks source consistency. Persistence and broader physical regression remain pending.
