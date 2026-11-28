@@ -170,6 +170,7 @@ class Window(QMainWindow):
             box.addWidget(self.use_backup_button)
             self.offline.open_button.clicked.connect(self.backup_enabled)
             self.offline.table.cellDoubleClicked.connect(self.edit_table_parameter)
+            self.offline.editable_callback = self.editable_keys
             box.addWidget(self.offline, 1)
             self.tabs.addTab(page, "")
         self.curves = CurvePage(self.monitor.open_help)
@@ -233,7 +234,7 @@ class Window(QMainWindow):
         from .backup import atomic_json
         fi = self.language.currentText() == 'fi'
         path, _ = QFileDialog.getSaveFileName(self, self.save_scenario_button.text(),
-            self.scenario_path or 'eh203-scenario.json', 'JSON (*.json)',
+            'eh203-scenario.json', 'JSON (*.json)',
             options=QFileDialog.Option.DontConfirmOverwrite)
         if not path:
             return
@@ -248,10 +249,14 @@ class Window(QMainWindow):
         self.scenario_path = str(path)
         self.reset_status()
 
+    def editable_keys(self):
+        from .parameter_edit import KEYS
+        return KEYS if self.edit_button.isEnabled() and self.offline.snapshot == self.snapshot else ()
+
     def edit_table_parameter(self, row, column):
         from .parameter_edit import KEYS
         item = self.offline.table.item(row,5)
-        if item and item.text() in KEYS and self.edit_button.isEnabled():
+        if item and item.text() in self.editable_keys():
             self.open_parameter_editor(item.text())
 
     def snapshot_factory(self):
@@ -294,6 +299,7 @@ class Window(QMainWindow):
         self.save_scenario_button.setVisible(selected)
         self.save_scenario_button.setEnabled(selected and idle and self.snapshot is not None)
         fi = self.language.currentText() == 'fi'
+        self.offline.mark_editable()
         self.edit_button.setToolTip(('Valitse simulaattorin varmuuskopio ja katkaise yhteys.' if fi else 'Load a simulator backup and disconnect.') if not self.edit_button.isEnabled() else '')
         self.snapshot_button.setEnabled(selected and idle)
         self.connect_button.setEnabled(idle and ready)
