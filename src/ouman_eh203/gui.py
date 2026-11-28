@@ -4,6 +4,7 @@ from serial.tools.list_ports import comports
 from pathlib import PurePath
 from .monitoring import OperationManager
 from .dashboard import Dashboard
+from .curve_gui import CurvePage
 from PySide6.QtCore import QSettings, QThread, Signal
 from PySide6.QtWidgets import (QApplication, QWidget, QMainWindow, QVBoxLayout,
     QHBoxLayout, QLabel, QPushButton, QComboBox, QLineEdit, QTabWidget)
@@ -109,6 +110,8 @@ class Window(QMainWindow):
             box.addWidget(label)
             box.addStretch()
             self.tabs.addTab(page, "")
+        self.curves = CurvePage(self.monitor.open_help)
+        self.tabs.addTab(self.curves, '')
         self.language.currentTextChanged.connect(self.translate)
         self.mode.currentIndexChanged.connect(self.reset_status)
         self.port.textChanged.connect(self.reset_status)
@@ -151,6 +154,7 @@ class Window(QMainWindow):
             return
         self.settings.setValue("port", port)
         self.monitor.begin()
+        self.curves.begin()
         self.status.setToolTip('')
         self.session = MonitorWorker(port, simulated, self)
         self.session.identity.connect(self.monitor_identity)
@@ -171,6 +175,7 @@ class Window(QMainWindow):
 
     def monitor_sample(self, pid, value, stamp):
         self.monitor.update_sample(pid, value, stamp)
+        self.curves.update_sample(pid, value, stamp)
 
     def monitor_error(self, detail):
         self.status.setText(("Virhe: " if self.language.currentText() == "fi" else "Error: ") + detail)
@@ -185,6 +190,7 @@ class Window(QMainWindow):
         fi = self.language.currentText() == "fi"
         self.live_button.setText("Yhdistä" if fi else "Connect")
         self.monitor.end()
+        self.curves.end()
         if self.closing:
             self.close()
         if not self.status.text().startswith(("Virhe:", "Error:")):
@@ -206,6 +212,8 @@ class Window(QMainWindow):
         self.mode.setItemText(0, s[4])
         self.mode.setItemText(1, s[5])
         self.monitor.translate(lang)
+        self.curves.translate(lang)
+        self.tabs.setTabText(2, 'Lämmityskäyrät' if lang == 'fi' else 'Heating curves')
         self.config.setText(s[7])
         if self.worker is None:
             self.status.setText(s[3])
