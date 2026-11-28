@@ -171,6 +171,7 @@ class Window(QMainWindow):
             self.offline.open_button.clicked.connect(self.backup_enabled)
             self.offline.table.cellDoubleClicked.connect(self.edit_table_parameter)
             self.offline.editable_callback = self.editable_keys
+            self.offline.simulation_open = self.open_configuration_path
             box.addWidget(self.offline, 1)
             self.tabs.addTab(page, "")
         self.curves = CurvePage(self.monitor.open_help)
@@ -203,6 +204,11 @@ class Window(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         return answer == QMessageBox.StandardButton.Yes
+
+    def open_configuration_path(self, path):
+        if self.mode.currentIndex() == 2:
+            return self.load_snapshot(path)
+        return self.offline.open_path(path)
 
     def use_open_backup(self):
         if self.offline.snapshot is not None and self.use_backup_button.isEnabled():
@@ -295,7 +301,9 @@ class Window(QMainWindow):
         self.backup_button.setEnabled(self.mode.currentIndex() == 1 and idle)
         self.edit_button.setEnabled(selected and idle and self.snapshot is not None)
         self.offline.restore_button.setEnabled(idle)
-        self.use_backup_button.setEnabled(idle and self.offline.snapshot is not None)
+        self.use_backup_button.setVisible(not selected)
+        self.use_backup_button.setEnabled(idle and self.offline.snapshot is not None and self.offline.simulation is None)
+        self.offline.open_button.setEnabled(idle)
         self.save_scenario_button.setVisible(selected)
         self.save_scenario_button.setEnabled(selected and idle and self.snapshot is not None)
         fi = self.language.currentText() == 'fi'
@@ -460,7 +468,7 @@ class Window(QMainWindow):
         self.mode.setItemText(0, s[4])
         self.mode.setItemText(1, s[5])
         self.mode.setItemText(2, "Simulaattori varmuuskopiosta" if lang=="fi" else "Backup simulator")
-        self.snapshot_button.setText("Valitse simulaattorin varmuuskopio" if lang=="fi" else "Choose simulator backup")
+        self.snapshot_button.setText("Avaa varmuuskopio tai simulaatio" if lang=="fi" else "Open backup or simulation")
         self.monitor.translate(lang)
         self.curves.translate(lang)
         self.tabs.setTabText(2, 'Lämmityskäyrät' if lang == 'fi' else 'Heating curves')
@@ -480,11 +488,26 @@ class Window(QMainWindow):
         fi = self.language.currentText() == 'fi'
         self.snapshot_button.setVisible(selected)
         self.snapshot_label.setVisible(selected)
-        self.snapshot_label.setText((('Tallennetut arvot, ei reaaliaikainen mittaus: ' if fi else 'Captured values, not live measurements: ') + self.snapshot_path) if self.snapshot is not None else ('Valitse varmennettu varmuuskopio' if fi else 'Choose a verified backup'))
-        if self.dirty():
-            self.snapshot_label.setText(self.snapshot_label.text()+(' · Tallentamattomia muutoksia' if fi else ' · Unsaved changes'))
+        self.setWindowTitle("Ouman EH-203 Manager" + (" *" if self.dirty() else ""))
+        if self.snapshot is None:
+            label = 'Valitse varmuuskopio tai simulaatio' if fi else 'Choose backup or simulation'
+        elif self.dirty():
+            label = 'Tallentamattomia muutoksia' if fi else 'Unsaved changes'
         elif self.scenario_path:
-            self.snapshot_label.setText(self.snapshot_label.text()+(' · Tallennettu simulaatio: ' if fi else ' · Saved simulation: ')+self.scenario_path)
+            label = 'Simulaatio tallennettu' if fi else 'Simulation saved'
+        else:
+            label = 'Simulaatio ladattu' if fi else 'Simulation loaded'
+        self.snapshot_label.setText(label + (' · ' + (self.scenario_path or self.snapshot_path) if self.snapshot else ''))
+        self.snapshot_label.setStyleSheet('font-weight: bold;' if self.dirty() else '')
+        self.offline.open_button.setText(('Avaa varmuuskopio tai simulaatio' if fi else 'Open backup or simulation') if selected else ('Avaa varmuuskopio' if fi else 'Open backup'))
+        if selected and self.snapshot is not None:
+            self.offline.show_simulation(self.snapshot, self.snapshot_sim, self.scenario_path or self.snapshot_path)
+        elif self.offline.simulation is not None:
+            self.offline.simulation = None
+            self.offline.snapshot = None
+            self.offline.fields = {}
+            self.offline.path = ''
+            self.offline.populate()
         self.backup_enabled()
         self.port.setEnabled(self.mode.currentIndex() == 1 and self.worker is None)
         self.status.setToolTip('')
