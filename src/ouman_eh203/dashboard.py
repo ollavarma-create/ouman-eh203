@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from pathlib import Path
-from PySide6.QtCore import QTimer, QStandardPaths
+from PySide6.QtCore import QTimer, QStandardPaths, QSettings
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QGroupBox, QLabel, QPushButton, QMessageBox
 from .manuals import ManualManager
 from .manual_gui import ManualViewer
@@ -30,8 +30,9 @@ def reading_state(sample, connected, now):
     return "missing" if value is None else "live"
 
 class Dashboard(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, settings=None):
         super().__init__(parent)
+        self.settings = settings if settings is not None else QSettings("EH203Manager", "Desktop")
         self.lang = "en"
         self.samples = {}
         self.connected = False
@@ -116,9 +117,15 @@ class Dashboard(QWidget):
         if not path.exists():
             QMessageBox.information(self, "PDF", self.tr2("Lataa käsikirja ensin dokumentaatioasetuksista.", "Download the manual in documentation settings first."))
             return
-        if QMessageBox.question(self, "PDF", self.tr2("Painosta ei ole varmennettu. Avataanko ehdotettu sivu?", "Edition not verified. Open suggested page?")) != QMessageBox.StandardButton.Yes:
-            return
         try:
+            _, digest = ManualManager.inspect(path)
+            key = f"manual/accepted/{self.lang}"
+            if self.settings.value(key, "") != digest:
+                if QMessageBox.question(self, "PDF", self.tr2(
+                    "Painosta ei ole varmennettu. Hyväksytäänkö tämä käsikirja ohjesivujen avaamiseen?",
+                    "Edition not verified. Accept this manual for opening suggested pages?")) != QMessageBox.StandardButton.Yes:
+                    return
+                self.settings.setValue(key, digest)
             ManualViewer(path, page, self).exec()
         except Exception as exc:
             QMessageBox.warning(self, "PDF", str(exc))
