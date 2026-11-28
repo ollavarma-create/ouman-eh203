@@ -163,6 +163,9 @@ class Window(QMainWindow):
             self.edit_button = QPushButton()
             self.edit_button.clicked.connect(self.open_parameter_editor)
             box.addWidget(self.edit_button)
+            self.bench_edit_button = QPushButton()
+            self.bench_edit_button.clicked.connect(self.open_bench_editor)
+            box.addWidget(self.bench_edit_button)
             self.offline = OfflinePage(self.monitor.open_help)
             self.offline.restore_callback = self.open_restore
             self.use_backup_button = QPushButton()
@@ -283,6 +286,17 @@ class Window(QMainWindow):
         dialog.deleteLater()
         self.reset_status()
 
+    def open_bench_editor(self):
+        if (self.mode.currentIndex() != 1 or self.session is not None or
+                self.worker is not None or self.backup_worker is not None or
+                not self.port.text().strip()):
+            return
+        from .bench_parameter_gui import BenchParameterDialog
+        dialog = BenchParameterDialog(self.port.text().strip(), self.language.currentText(), self)
+        dialog.exec()
+        dialog.deleteLater()
+        self.reset_status()
+
     def open_parameter_editor(self, key=None):
         if not self.edit_button.isEnabled():
             return
@@ -300,6 +314,8 @@ class Window(QMainWindow):
         ready = not selected or self.snapshot is not None
         self.backup_button.setEnabled(self.mode.currentIndex() == 1 and idle)
         self.edit_button.setEnabled(selected and idle and self.snapshot is not None)
+        self.bench_edit_button.setVisible(self.mode.currentIndex() == 1)
+        self.bench_edit_button.setEnabled(self.mode.currentIndex() == 1 and idle and bool(self.port.text().strip()))
         self.offline.restore_button.setEnabled(idle)
         self.use_backup_button.setVisible(not selected)
         self.use_backup_button.setEnabled(idle and self.offline.snapshot is not None and self.offline.simulation is None)
@@ -474,6 +490,7 @@ class Window(QMainWindow):
         self.tabs.setTabText(2, 'Lämmityskäyrät' if lang == 'fi' else 'Heating curves')
         self.config.setText('Katkaise käytönvalvontayhteys ennen varmuuskopiointia. Raakakaappaus ei takaa kaikkien asetusten palautettavuutta.' if lang == 'fi' else 'Disconnect monitoring before backup. Raw capture does not guarantee restoration of every setting.')
         self.edit_button.setText('Muokkaa simulaattorin asetuksia' if lang=='fi' else 'Edit simulator settings')
+        self.bench_edit_button.setText('Muokkaa testilaitteen asetuksia (kokeellinen)' if lang=='fi' else 'Edit bench controller settings (experimental)')
         self.use_backup_button.setText('Käytä avattua varmuuskopiota simulaattorissa' if lang=='fi' else 'Use opened backup in simulator')
         self.save_scenario_button.setText('Tallenna simulaatio nimellä' if lang=='fi' else 'Save simulation as')
         self.offline.translate(lang)
