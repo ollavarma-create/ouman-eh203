@@ -43,7 +43,7 @@ class ProbeWorker(QThread):
 
 class MonitorWorker(QThread):
     identity = Signal(str)
-    sample = Signal(int, object, str)
+    sample = Signal(object, object, str)
     failed = Signal(str)
     def __init__(self, port, simulated, parent=None):
         super().__init__(parent)
@@ -99,7 +99,7 @@ class Window(QMainWindow):
         layout.addWidget(self.status)
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
-        self.monitor = Dashboard()
+        self.monitor = Dashboard(settings=self.settings)
         self.tabs.addTab(self.monitor, '')
         self.config = QLabel()
         self.config.setWordWrap(True)
