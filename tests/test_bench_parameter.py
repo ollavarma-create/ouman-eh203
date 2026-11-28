@@ -5,19 +5,20 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from ouman_eh203.backup import load, acquire, verify_file
-from ouman_eh203.bench_parameter import preview, execute_bench, _apply
+from ouman_eh203.bench_parameter import (preview, execute_bench, _apply,
+    draft_preview, execute_draft, _apply_draft)
 from ouman_eh203.simulator import SimulatedSerial
 from ouman_eh203.registry import QUICK_IDS
 
 
 class BenchWire(SimulatedSerial):
-    """Test double for the three allowed field writes, not firmware evidence."""
+    """Test double for the allowed field writes, not firmware evidence."""
     def __init__(self, blocks):
         super().__init__(blocks)
         self.write_fault = None
 
     def apply(self, pid, data):
-        allowed = {12: {4}, 13: {1, 2}, 16: {1, 2}}
+        allowed = {12: {3, 4}, 13: {1, 2}, 16: {1, 2}}
         old = self.blocks[pid]
         if len(data) != len(old) or not set(i for i, (a, b) in enumerate(zip(old, data))
                                            if a != b) <= allowed.get(pid, set()):
@@ -185,3 +186,98 @@ class BenchParameterTests(unittest.TestCase):
                 execute_bench('/dev/test', self.snapshot, replace(p, pid=12),
                               self.safety, self.journal, confirmation='BENCH')
             opened.assert_not_called()
+
+
+    def apply_draft(self, approved, settle=lambda: None, phase=None):
+        with patch('ouman_eh203.backup.time.sleep'):
+            return _apply_draft(self.sim, approved, self.safety, self.journal,
+                                settle=settle, phase=phase)
+
+    def test_draft_groups_same_block_and_verifies_final_capture(self):
+        p = draft_preview(self.snapshot, {'l1_supply_min': 20, 'l1_supply_max': 65,
+                                         'dhw_setpoint': '58.9', 'l1_room_setpoint': '22.0'})
+        self.assertEqual(len(p.changes), 4)
+        self.assertEqual([step[0] for step in p.steps], [12,13,16])
+        self.assertEqual(dict(p.after)[12][3:5], bytes([20,65]))
+        self.assertEqual(dict(p.after)[12][:3], dict(p.before)[12][:3])
+        self.assertEqual(dict(p.after)[12][5:], dict(p.before)[12][5:])
+        self.assertFalse(self.sim.writes)
+        self.allowed_writes = 3
+        waits = []
+        result = self.apply_draft(p, lambda: waits.append(True))
+        self.assertTrue(verify_file(result))
+        self.assertEqual(len(waits), 3)
+        self.assertEqual([tx[4] for tx in self.sim.writes if tx[1]==0x82], [12,13,16])
+        self.assertEqual(dict(p.after)[12], self.sim.blocks[12])
+        self.assertEqual(dict(p.after)[16], self.sim.blocks[16])
+        journal = load(self.journal)
+        self.assertEqual(journal['status'], 'complete')
+        self.assertEqual([e['status'] for e in journal['entries']], ['verified']*3)
+        self.assertFalse(journal['persistence_verified'])
+        self.assertEqual(load(journal['after_capture']), result)
+
+    def test_draft_validates_combined_min_max(self):
+        with self.assertRaises(ValueError):
+            draft_preview(self.snapshot, {'l1_supply_min': 50, 'l1_supply_max': 45})
+        p = draft_preview(self.snapshot, {'l1_supply_min': 65, 'l1_supply_max': 80})
+        self.assertEqual(len(p.steps), 1)
+        self.assertFalse(self.sim.writes)
+
+    def test_draft_invalid_field_and_resolution(self):
+        for values in ({'dhw_boost': 5}, {'dhw_setpoint': '58.01'},
+                       {'l1_supply_min': 4}, {'dhw_setpoint': 'NaN'}):
+            with self.assertRaises(ValueError):
+                draft_preview(self.snapshot, values)
+
+    def test_draft_partial_failure_stops_remaining_writes(self):
+        p = draft_preview(self.snapshot, {'l1_supply_max': 65, 'l1_room_setpoint': 22,
+                                         'dhw_setpoint': 59})
+        def settle():
+            self.sim.write_fault = 'ack'
+        self.allowed_writes = 2
+        with self.assertRaises(ValueError):
+            self.apply_draft(p, settle)
+        journal = load(self.journal)
+        self.assertEqual(journal['status'], 'interrupted')
+        self.assertEqual([e['status'] for e in journal['entries']],
+                         ['verified','write_outcome_unknown','not_started'])
+        self.assertEqual(self.sim.blocks[16], dict(p.before)[16])
+
+    def test_draft_stale_and_backup_failure(self):
+        p = draft_preview(self.snapshot, {'dhw_setpoint': 59})
+        with patch('ouman_eh203.bench_parameter.acquire', side_effect=OSError('disk')):
+            with self.assertRaises(OSError):
+                self.apply_draft(p)
+        self.assertFalse(self.journal.exists())
+        self.sim.blocks[16] = dict(p.after)[16]
+        with self.assertRaises(ValueError):
+            self.apply_draft(p)
+
+    def test_draft_noop_and_modified_preview(self):
+        p = draft_preview(self.snapshot, {})
+        self.assertIsNone(self.apply_draft(p))
+        self.assertFalse(self.safety.exists())
+        p = draft_preview(self.snapshot, {'dhw_setpoint': 59})
+        with patch('ouman_eh203.bench_parameter.open_serial') as opened:
+            with self.assertRaises(ValueError):
+                execute_draft('/dev/test', self.snapshot, p, self.safety, self.journal,
+                              confirmation='')
+            with self.assertRaises(ValueError):
+                execute_draft('/dev/test', self.snapshot, replace(p, steps=()),
+                              self.safety, self.journal, confirmation='BENCH')
+            opened.assert_not_called()
+
+
+    def test_draft_reports_phases_in_write_order(self):
+        p = draft_preview(self.snapshot, {'l1_supply_max': 65, 'dhw_setpoint': '58.9'})
+        events = []
+        self.allowed_writes = 2
+        self.apply_draft(p, phase=lambda name, pid: events.append((name, pid)))
+        self.assertEqual(events, [
+            ('check', 0), ('backup', 0), ('check', 0),
+            ('check_step', 12), ('write', 12), ('settle', 12),
+            ('readback', 12), ('verified', 12),
+            ('check_step', 16), ('write', 16), ('settle', 16),
+            ('readback', 16), ('verified', 16),
+            ('final_check', 0), ('final_capture', 0),
+        ])

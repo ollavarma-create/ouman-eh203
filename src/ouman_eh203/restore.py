@@ -9,6 +9,7 @@ from .transport import exchange
 from .simulator import SimulatedSerial
 from .validation import propose, block
 from .schedules import semantic_key, equivalent_readback
+from .transaction import write_and_observe
 
 IDS=(4,5,6,7,8,9,12,13,14,16,17,43,44,47,65,66)
 ORDER=(65,66,12,13,16,43,44,14,47,4,6,8)
@@ -110,15 +111,8 @@ def _execute(sim,source,steps,log,*,target_identity=None,allow_device_mismatch=F
             journal['entries'].append(entry)
             entry['before']={str(k):v.hex() for k,v in before.items()}
             entry['expected']={str(k):v.hex() for k,v in expected.items()}
-        save()
-        rx=exchange(sim,bytes.fromhex(entry['tx']))
-        entry['rx']=rx.hex()
-        save()
-        decode(rx,pid,0)
-        settle()
-        observed=read()
-        entry['observed']={str(k):v.hex() for k,v in observed.items()}
-        save()
+        observed=write_and_observe(entry, send=lambda tx: exchange(sim,tx),
+            acknowledge=lambda rx: decode(rx,pid,0), settle=settle, read=read, save=save)
         if pid==65 and before[65][0]==1 and expected[65][0]==0:
             # Validate every sample; only intermediate Y coordinates may drift.
             def validate(sample):
