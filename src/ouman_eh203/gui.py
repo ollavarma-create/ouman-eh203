@@ -4,7 +4,7 @@ from serial.tools.list_ports import comports
 from pathlib import PurePath, Path
 from .offline_gui import OfflinePage
 from threading import Event
-from .backup import acquire, verify_file
+from .backup import acquire, verify_file, load
 from .monitoring import OperationManager
 from .dashboard import Dashboard
 from .curve_gui import CurvePage
@@ -22,9 +22,9 @@ STRINGS = {
            "Simulaattori", "Sarjaportti", "Tunnistevastaus (hex)", "Vain luku; asetustyökalut ovat suunnitteilla."),
 }
 
-def probe(port, simulated):
+def probe(port, simulated, factory=None):
     # Synthetic identity bytes, not a claim about real firmware.
-    ser = SimulatedSerial({1: b"DEMO"}) if simulated else open_serial(port)
+    ser = factory() if factory else (SimulatedSerial({1: b"DEMO"}) if simulated else open_serial(port))
     try:
         status, data, error = classify(exchange(ser, request(1)), 1)
         if status != "accepted" or not data:
@@ -36,12 +36,13 @@ def probe(port, simulated):
 
 class ProbeWorker(QThread):
     outcome = Signal(bool, str)
-    def __init__(self, port, simulated, parent=None):
+    def __init__(self, port, simulated, parent=None, factory=None):
         super().__init__(parent)
         self.port, self.simulated = port, simulated
+        self.factory = factory
     def run(self):
         try:
-            self.outcome.emit(True, probe(self.port, self.simulated))
+            self.outcome.emit(True, probe(self.port, self.simulated, self.factory))
         except Exception as exc:
             self.outcome.emit(False, str(exc))
 
@@ -49,9 +50,9 @@ class MonitorWorker(QThread):
     identity = Signal(str)
     sample = Signal(object, object, str)
     failed = Signal(str)
-    def __init__(self, port, simulated, parent=None):
+    def __init__(self, port, simulated, parent=None, factory=None):
         super().__init__(parent)
-        self.manager = OperationManager(port, simulated)
+        self.manager = OperationManager(port, simulated, factory=factory, snapshot=factory is not None)
     def run(self):
         try:
             self.manager.run(self.identity.emit, self.sample.emit)
@@ -101,7 +102,11 @@ class Window(QMainWindow):
         self.language.addItems(["en", "fi"])
         self.language.setCurrentText(self.settings.value("language", "en"))
         self.mode = QComboBox()
-        self.mode.addItems(["Simulator", "Serial port"])
+        self.mode.addItems(["Simulator", "Serial port", "Backup simulator"])
+        self.snapshot = None
+        self.snapshot_path = ""
+        self.snapshot_button = QPushButton()
+        self.snapshot_button.clicked.connect(self.choose_snapshot)
         self.port = QLineEdit(self.settings.value("port", "/dev/ttyUSB0"))
         self.port.setEnabled(False)
         self.port.setMinimumWidth(140)
@@ -128,6 +133,10 @@ class Window(QMainWindow):
         self.status = QLabel()
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
+        layout.addWidget(self.snapshot_button)
+        self.snapshot_label = QLabel()
+        self.snapshot_label.setWordWrap(True)
+        layout.addWidget(self.snapshot_label)
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
         self.monitor = Dashboard(settings=self.settings)
@@ -158,9 +167,42 @@ class Window(QMainWindow):
         self.reset_status()
         self.scan_ports()
 
+    def choose_snapshot(self):
+        if self.session is not None or self.worker is not None or self.backup_worker is not None:
+            return
+        path, _ = QFileDialog.getOpenFileName(self, self.snapshot_button.text(), "", "JSON (*.json)")
+        if path:
+            self.load_snapshot(path)
+
+    def load_snapshot(self, path):
+        if self.session is not None or self.worker is not None or self.backup_worker is not None:
+            return False
+        self.snapshot = None
+        self.snapshot_path = ""
+        try:
+            snapshot = load(path)
+            SimulatedSerial.from_snapshot(snapshot)
+        except (OSError, ValueError, TypeError, KeyError, AttributeError, IndexError) as exc:
+            self.reset_status()
+            self.status.setText(("Virhe: " if self.language.currentText()=="fi" else "Error: ")+str(exc))
+            return False
+        self.snapshot, self.snapshot_path = snapshot, str(path)
+        self.mode.setCurrentIndex(2)
+        self.reset_status()
+        return True
+
+    def snapshot_factory(self):
+        snapshot = self.snapshot
+        return (lambda: SimulatedSerial.from_snapshot(snapshot)) if self.mode.currentIndex()==2 and snapshot is not None else None
+
     def backup_enabled(self):
-        self.backup_button.setEnabled(self.mode.currentIndex() == 1 and
-            self.session is None and self.worker is None and self.backup_worker is None)
+        idle = self.session is None and self.worker is None and self.backup_worker is None
+        selected = self.mode.currentIndex() == 2
+        ready = not selected or self.snapshot is not None
+        self.backup_button.setEnabled(self.mode.currentIndex() == 1 and idle)
+        self.snapshot_button.setEnabled(selected and idle)
+        self.connect_button.setEnabled(idle and ready)
+        self.live_button.setEnabled(self.session is not None or (idle and ready))
 
     def start_backup(self):
         if not self.backup_button.isEnabled():
@@ -246,15 +288,18 @@ class Window(QMainWindow):
             return
         if self.worker is not None:
             return
-        simulated = self.mode.currentIndex() == 0
+        simulated = self.mode.currentIndex() != 1
+        factory = self.snapshot_factory()
+        if self.mode.currentIndex() == 2 and factory is None:
+            return
         port = self.port.text().strip()
         if not simulated and not port:
             return
         self.settings.setValue("port", port)
-        self.monitor.begin()
+        self.monitor.begin(snapshot=factory is not None)
         self.curves.begin()
         self.status.setToolTip('')
-        self.session = MonitorWorker(port, simulated, self)
+        self.session = MonitorWorker(port, simulated, self, factory=factory)
         self.session.identity.connect(self.monitor_identity)
         self.session.sample.connect(self.monitor_sample)
         self.session.failed.connect(self.monitor_error)
@@ -269,6 +314,8 @@ class Window(QMainWindow):
 
     def monitor_identity(self, detail):
         prefix = ("Simulaattori" if self.language.currentText() == "fi" else "Simulator") if self.mode.currentIndex() == 0 else f"RS-232 · {self.port.text().strip()}"
+        if self.mode.currentIndex() == 2:
+            prefix = "Varmuuskopiosimulaattori" if self.language.currentText()=="fi" else "Backup simulator"
         self.status.setToolTip(detail)
         self.status.setText(f"{prefix} · " + ("Yhteys muodostettu" if self.language.currentText() == "fi" else "Connected"))
 
@@ -311,6 +358,8 @@ class Window(QMainWindow):
         self.manual_button.setToolTip('Dokumentaatio' if lang == 'fi' else 'Documentation')
         self.mode.setItemText(0, s[4])
         self.mode.setItemText(1, s[5])
+        self.mode.setItemText(2, "Simulaattori varmuuskopiosta" if lang=="fi" else "Backup simulator")
+        self.snapshot_button.setText("Valitse simulaattorin varmuuskopio" if lang=="fi" else "Choose simulator backup")
         self.monitor.translate(lang)
         self.curves.translate(lang)
         self.tabs.setTabText(2, 'Lämmityskäyrät' if lang == 'fi' else 'Heating curves')
@@ -318,11 +367,16 @@ class Window(QMainWindow):
         self.offline.translate(lang)
         self.translate_backup_status()
         self.backup_button.setText('Ota varmuuskopio' if lang == 'fi' else 'Create backup')
-        self.backup_enabled()
+        self.reset_status()
         if self.worker is None:
             self.status.setText(s[3])
 
     def reset_status(self, *_):
+        selected = self.mode.currentIndex() == 2
+        fi = self.language.currentText() == 'fi'
+        self.snapshot_button.setVisible(selected)
+        self.snapshot_label.setVisible(selected)
+        self.snapshot_label.setText((('Tallennetut arvot, ei reaaliaikainen mittaus: ' if fi else 'Captured values, not live measurements: ') + self.snapshot_path) if self.snapshot is not None else ('Valitse varmennettu varmuuskopio' if fi else 'Choose a verified backup'))
         self.backup_enabled()
         self.port.setEnabled(self.mode.currentIndex() == 1 and self.worker is None)
         self.status.setToolTip('')
@@ -331,12 +385,15 @@ class Window(QMainWindow):
     def start_probe(self):
         if self.worker is not None or self.session is not None:
             return
-        simulated = self.mode.currentIndex() == 0
+        simulated = self.mode.currentIndex() != 1
+        factory = self.snapshot_factory()
+        if self.mode.currentIndex() == 2 and factory is None:
+            return
         port = self.port.text().strip()
         if not simulated and not port:
             return
         self.settings.setValue("port", port)
-        self.worker = ProbeWorker(port, simulated, self)
+        self.worker = ProbeWorker(port, simulated, self, factory=factory)
         self.worker.outcome.connect(self.show_outcome)
         self.worker.finished.connect(self.finish_probe)
         for widget in (self.connect_button, self.mode, self.port, self.language):
@@ -351,19 +408,20 @@ class Window(QMainWindow):
     def show_outcome(self, ok, detail):
         fi = self.language.currentText() == "fi"
         prefix = ("Simulaattori" if fi else "Simulator") if self.mode.currentIndex() == 0 else "RS-232"
+        if self.mode.currentIndex() == 2:
+            prefix = "Varmuuskopiosimulaattori" if fi else "Backup simulator"
         label = ("Testi onnistui" if fi else "Probe succeeded") if ok else ("Virhe" if fi else "Error")
         self.status.setText(f"{prefix}: {label}: {detail}")
 
     def finish_probe(self):
         self.worker.deleteLater()
         self.worker = None
-        self.backup_enabled()
-        self.live_button.setEnabled(True)
         self.scan_button.setEnabled(True)
         self.port_choices.setEnabled(True)
         for widget in (self.connect_button, self.mode, self.language):
             widget.setEnabled(True)
         self.port.setEnabled(self.mode.currentIndex() == 1)
+        self.backup_enabled()
 
     def closeEvent(self, event):
         if self.backup_worker is not None:

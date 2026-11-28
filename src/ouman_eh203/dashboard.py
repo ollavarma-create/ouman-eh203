@@ -45,6 +45,7 @@ class Dashboard(QWidget):
         self.lang = "en"
         self.samples = {}
         self.connected = False
+        self.snapshot = False
         self.groups, self.rows = [], {}
         layout = QVBoxLayout(self)
         grid = QGridLayout()
@@ -97,7 +98,8 @@ class Dashboard(QWidget):
             button.setToolTip(tip)
         self.refresh()
 
-    def begin(self):
+    def begin(self, snapshot=False):
+        self.snapshot = snapshot
         self.samples.clear()
         self.connected = True
         self.refresh()
@@ -118,11 +120,11 @@ class Dashboard(QWidget):
             val = sample[0] if sample else None
             value.setText(self.format_value(key, val))
             labels = {"pending": ("Ei toteutettu", "Not implemented"), "waiting": ("Odottaa", "Waiting") if self.connected else ("Ei yhteyttä", "Disconnected"),
-                      "stale": ("Vanhentunut", "Stale"), "missing": ("Anturi puuttuu", "Sensor missing"), "live": ("Ajantasainen", "Current")}
+                      "stale": ("Vanhentunut", "Stale"), "missing": ("Anturi puuttuu", "Sensor missing"), "live": ("Tallennettu", "Captured") if self.snapshot else ("Ajantasainen", "Current")}
             state.setText(self.tr2("Ei anturia tai tuettua reititystä", "No sensor or supported route") if key == "l2_room" and status == "missing" else self.tr2(*labels[status]))
         stamps = [datetime.fromisoformat(s[1]) for s in self.samples.values()]
         stamp = max(stamps).astimezone().strftime("%H:%M:%S") if stamps else "—"
-        self.updated.setText(self.tr2("Viimeisin vastaanotto: ", "Last received: ") + stamp)
+        self.updated.setText((self.tr2("Simulaattorin viimeisin luku: ", "Last simulator read: ") if self.snapshot else self.tr2("Viimeisin vastaanotto: ", "Last received: ")) + stamp)
 
     def format_value(self, key, val):
         if val is None:

@@ -58,9 +58,10 @@ def temperature(data):
     return None if raw == bytes.fromhex("865a") else int.from_bytes(raw, "big", signed=True) / 100
 
 class OperationManager:
-    def __init__(self, port, simulated, interval=3, factory=None):
+    def __init__(self, port, simulated, interval=3, factory=None, snapshot=False):
         self.port, self.simulated, self.interval = port, simulated, interval
         self.factory = factory
+        self.snapshot = snapshot
         self.stop_event = Event()
 
     def stop(self):
@@ -77,9 +78,16 @@ class OperationManager:
                 for pid in POLL_IDS:
                     if self.stop_event.is_set():
                         break
-                    data = read_block(ser, pid)
+                    try:
+                        data = read_block(ser, pid)
+                    except ValueError:
+                        if not self.snapshot:
+                            raise
+                        continue
                     stamp = datetime.now(timezone.utc).isoformat()
                     if pid == 17:
+                        if len(data) < 20 and self.snapshot:
+                            continue
                         if len(data) < 20:
                             raise ValueError('Short routing response')
                         routing = data
@@ -90,7 +98,13 @@ class OperationManager:
                         value = temperature(data) if routing is not None and routing[8] == 5 and all(routing[i] != 5 for i in (9, 11, 12, 19)) else None
                         sample('l2_room', value, stamp)
                         continue
-                    for key, value in decode_samples(pid, data):
+                    try:
+                        decoded = decode_samples(pid, data)
+                    except ValueError:
+                        if not self.snapshot:
+                            raise
+                        continue
+                    for key, value in decoded:
                         sample(key, value, stamp)
                 self.stop_event.wait(self.interval)
         finally:

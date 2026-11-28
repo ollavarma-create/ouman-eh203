@@ -15,6 +15,14 @@ class SimulatedSerial:
         self.deferred_l1 = None
 
     @classmethod
+    def from_snapshot(cls, snapshot):
+        from .backup import verify_file
+        verify_file(snapshot)
+        sim = cls({int(k): bytes.fromhex(v['data']) for k,v in snapshot['records'].items() if v['status']=='accepted'})
+        sim.factory = None
+        return sim
+
+    @classmethod
     def from_backups(cls, original, factory):
         from .backup import verify_file
         verify_file(original)
@@ -44,6 +52,8 @@ class SimulatedSerial:
             self.deferred_l1=None
 
     def factory_reset(self):
+        if self.factory is None:
+            raise ValueError('No verified factory defaults')
         self.deferred_l1=None
         self.blocks = dict(self.factory)
         self.persistent = dict(self.factory)
