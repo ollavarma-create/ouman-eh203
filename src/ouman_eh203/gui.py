@@ -1,5 +1,7 @@
 """Desktop foundation. Only canonical identity reads are exposed."""
 import sys
+from serial.tools.list_ports import comports
+from .monitoring import OperationManager
 from PySide6.QtCore import QSettings, QThread, Signal
 from PySide6.QtWidgets import (QApplication, QWidget, QMainWindow, QVBoxLayout,
     QHBoxLayout, QLabel, QPushButton, QComboBox, QLineEdit, QTabWidget)
@@ -37,6 +39,19 @@ class ProbeWorker(QThread):
         except Exception as exc:
             self.outcome.emit(False, str(exc))
 
+class MonitorWorker(QThread):
+    identity = Signal(str)
+    sample = Signal(int, object, str)
+    failed = Signal(str)
+    def __init__(self, port, simulated, parent=None):
+        super().__init__(parent)
+        self.manager = OperationManager(port, simulated)
+    def run(self):
+        try:
+            self.manager.run(self.identity.emit, self.sample.emit)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
 class Window(QMainWindow):
     def __init__(self, settings=None):
         super().__init__()
@@ -57,11 +72,22 @@ class Window(QMainWindow):
         self.port = QLineEdit(self.settings.value("port", "/dev/ttyUSB0"))
         self.port.setEnabled(False)
         self.connect_button = QPushButton()
+        self.session = None
+        self.samples = {}
+        self.scan_button = QPushButton("↻")
+        self.scan_button.clicked.connect(self.scan_ports)
+        self.port_choices = QComboBox()
+        self.port_choices.activated.connect(lambda i: self.port.setText(self.port_choices.itemData(i)))
+        self.live_button = QPushButton()
+        self.live_button.clicked.connect(self.toggle_monitor)
         for widget in (self.language, self.mode, self.port, self.connect_button):
             bar.addWidget(widget)
         self.manual_button = QPushButton('⚙')
         self.manual_button.clicked.connect(self.open_manual_settings)
         bar.addWidget(self.manual_button)
+        bar.addWidget(self.port_choices)
+        bar.addWidget(self.scan_button)
+        bar.addWidget(self.live_button)
         self.status = QLabel()
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
@@ -83,6 +109,67 @@ class Window(QMainWindow):
         self.connect_button.clicked.connect(self.start_probe)
         self.translate()
         self.reset_status()
+        self.scan_ports()
+
+    def scan_ports(self):
+        self.port_choices.clear()
+        for item in sorted(comports(), key=lambda p: p.device):
+            self.port_choices.addItem(f"{item.device} — {item.description}", item.device)
+
+    def toggle_monitor(self):
+        if self.session is not None:
+            self.session.manager.stop()
+            self.live_button.setEnabled(False)
+            return
+        if self.worker is not None:
+            return
+        simulated = self.mode.currentIndex() == 0
+        port = self.port.text().strip()
+        if not simulated and not port:
+            return
+        self.settings.setValue("port", port)
+        self.samples.clear()
+        self.monitor.clear()
+        self.session = MonitorWorker(port, simulated, self)
+        self.session.identity.connect(self.monitor_identity)
+        self.session.sample.connect(self.monitor_sample)
+        self.session.failed.connect(self.monitor_error)
+        self.session.finished.connect(self.monitor_finished)
+        for widget in (self.connect_button, self.mode, self.port, self.language,
+                       self.scan_button, self.port_choices):
+            widget.setEnabled(False)
+        self.live_button.setText("Katkaise" if self.language.currentText() == "fi" else "Disconnect")
+        self.status.setText("…")
+        self.session.start()
+
+    def monitor_identity(self, detail):
+        prefix = "Simulator" if self.mode.currentIndex() == 0 else "RS-232"
+        self.status.setText(f"{prefix}: {detail}")
+
+    def monitor_sample(self, pid, value, stamp):
+        self.samples[pid] = (value, stamp)
+        fi = self.language.currentText() == "fi"
+        names = {18: ("Ulkolämpötila", "Outdoor"), 20: ("L1 menovesi", "L1 supply"),
+                 21: ("L1 huone", "L1 room")}
+        lines = []
+        for key, (val, ts) in sorted(self.samples.items()):
+            reading = "—" if val is None else f"{val:.2f} °C"
+            lines.append(f"{names[key][0 if fi else 1]}: {reading}   [{ts}]")
+        self.monitor.setText("\n".join(lines))
+
+    def monitor_error(self, detail):
+        self.status.setText(("Virhe: " if self.language.currentText() == "fi" else "Error: ") + detail)
+
+    def monitor_finished(self):
+        self.session.deleteLater()
+        self.session = None
+        for widget in (self.connect_button, self.mode, self.language, self.scan_button,
+                       self.port_choices, self.live_button):
+            widget.setEnabled(True)
+        self.port.setEnabled(self.mode.currentIndex() == 1)
+        fi = self.language.currentText() == "fi"
+        self.live_button.setText("Yhdistä" if fi else "Connect")
+        self.monitor.setText("Ei yhteyttä — tiedot vanhentuneet" if fi else "Disconnected — data stale")
 
     def open_manual_settings(self):
         from .manual_gui import ManualSettings
@@ -95,6 +182,7 @@ class Window(QMainWindow):
         self.tabs.setTabText(0, s[0])
         self.tabs.setTabText(1, s[1])
         self.connect_button.setText(s[2])
+        self.live_button.setText('Yhdistä' if lang == 'fi' else 'Connect')
         self.manual_button.setToolTip('Dokumentaatio' if lang == 'fi' else 'Documentation')
         self.mode.setItemText(0, s[4])
         self.mode.setItemText(1, s[5])
@@ -108,7 +196,7 @@ class Window(QMainWindow):
         self.status.setText(STRINGS[self.language.currentText()][3])
 
     def start_probe(self):
-        if self.worker is not None:
+        if self.worker is not None or self.session is not None:
             return
         simulated = self.mode.currentIndex() == 0
         port = self.port.text().strip()
@@ -121,6 +209,9 @@ class Window(QMainWindow):
         for widget in (self.connect_button, self.mode, self.port, self.language):
             widget.setEnabled(False)
         self.status.setText("…" )
+        self.live_button.setEnabled(False)
+        self.scan_button.setEnabled(False)
+        self.port_choices.setEnabled(False)
         self.worker.start()
 
     def show_outcome(self, ok, detail):
@@ -132,11 +223,18 @@ class Window(QMainWindow):
     def finish_probe(self):
         self.worker.deleteLater()
         self.worker = None
+        self.live_button.setEnabled(True)
+        self.scan_button.setEnabled(True)
+        self.port_choices.setEnabled(True)
         for widget in (self.connect_button, self.mode, self.language):
             widget.setEnabled(True)
         self.port.setEnabled(self.mode.currentIndex() == 1)
 
     def closeEvent(self, event):
+        if self.session is not None:
+            self.session.manager.stop()
+            event.ignore()
+            return
         if self.worker is not None:
             event.ignore()
         else:
