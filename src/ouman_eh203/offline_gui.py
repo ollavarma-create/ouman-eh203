@@ -1,7 +1,7 @@
 """Read-only inspection of verified captures."""
-from .backup import load, known_fields
+from .backup import load, known_fields, compare
 from .metadata import PARAMETERS
-from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QPushButton,QLabel,
+from PySide6.QtWidgets import (QCheckBox,QWidget,QVBoxLayout,QHBoxLayout,QPushButton,QLabel,
     QLineEdit,QFileDialog,QTableWidget,QTableWidgetItem,QAbstractItemView,QTabWidget,QHeaderView)
 
 class OfflinePage(QWidget):
@@ -10,6 +10,9 @@ class OfflinePage(QWidget):
         self.snapshot = None
         self.fields = {}
         self.path = ""
+        self.second = None
+        self.second_path = ""
+        self.report = None
         self.lang = "en"
         self.help_callback = help_callback
         layout = QVBoxLayout(self)
@@ -20,23 +23,35 @@ class OfflinePage(QWidget):
         self.search.textChanged.connect(self.filter)
         self.help = QPushButton()
         self.help.clicked.connect(self.open_help)
-        for w in (self.open_button,self.search,self.help):
+        self.compare_button = QPushButton()
+        self.compare_button.clicked.connect(self.choose_comparison)
+        self.only_changes = QCheckBox()
+        self.only_changes.setChecked(True)
+        self.only_changes.toggled.connect(self.filter)
+        for w in (self.open_button,self.compare_button,self.search,self.help):
             bar.addWidget(w)
         layout.addLayout(bar)
         self.status = QLabel()
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
+        self.comparison_status = QLabel()
+        self.comparison_status.setWordWrap(True)
+        layout.addWidget(self.comparison_status)
+        layout.addWidget(self.only_changes)
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
         self.table = QTableWidget()
         self.raw = QTableWidget()
-        for table in (self.table,self.raw):
+        self.diff = QTableWidget()
+        self.raw_diff = QTableWidget()
+        for table in (self.table,self.raw,self.diff,self.raw_diff):
             table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
             table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
             table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
             table.horizontalHeader().setStretchLastSection(True)
             self.tabs.addTab(table,"")
         self.table.itemSelectionChanged.connect(self.help_state)
+        self.diff.itemSelectionChanged.connect(self.help_state)
         self.tabs.currentChanged.connect(self.help_state)
         self.translate("en")
 
@@ -49,6 +64,8 @@ class OfflinePage(QWidget):
             self.open_path(path)
 
     def open_path(self,path):
+        self.second = self.report = None
+        self.second_path = ''
         self.snapshot = None
         self.fields = {}
         self.path = ""
@@ -63,6 +80,63 @@ class OfflinePage(QWidget):
         self.populate()
         return True
 
+    def choose_comparison(self):
+        path,_ = QFileDialog.getOpenFileName(self,self.tr2("Valitse toinen varmuuskopio","Choose second backup"),"","JSON (*.json)")
+        if path:
+            self.compare_path(path)
+
+    def compare_path(self,path):
+        self.second = self.report = None
+        self.second_path = ""
+        try:
+            if self.snapshot is None:
+                raise ValueError("No baseline")
+            second = load(path)
+            report = compare(self.snapshot,second)
+            fields = known_fields(second)["fields"]
+        except (OSError,ValueError,KeyError,TypeError,AttributeError,IndexError) as exc:
+            self.populate_comparison()
+            self.comparison_status.setText(self.tr2("Vertailu hylätty: ","Comparison rejected: ")+str(exc))
+            return False
+        self.second,self.report,self.second_path = fields,report,str(path)
+        self.populate_comparison()
+        self.tabs.setCurrentIndex(2)
+        return True
+
+    def populate_comparison(self):
+        self.compare_button.setEnabled(self.snapshot is not None)
+        self.only_changes.setEnabled(self.report is not None)
+        self.diff.setColumnCount(6)
+        self.diff.setHorizontalHeaderLabels(self.tr2(["Parametri","Ensimmäinen","Toinen","Yksikkö","Tila","Avain"],["Parameter","First","Second","Unit","Status","Key"]))
+        self.raw_diff.setColumnCount(5)
+        self.raw_diff.setHorizontalHeaderLabels(self.tr2(["ID","Ensimmäinen tila","Toinen tila","Muuttuneet tavusiirtymät","Luokitus"],["ID","First status","Second status","Changed byte offsets","Category"]))
+        self.diff.setRowCount(0)
+        self.raw_diff.setRowCount(0)
+        self.comparison_status.clear()
+        if self.report is not None:
+            changes = self.report["known_field_changes"]
+            self.diff.setRowCount(len(self.fields))
+            for row,(key,field) in enumerate(sorted(self.fields.items())):
+                changed = key in changes
+                values = (PARAMETERS[key]["label"].get(self.lang) or key,field["value"],self.second[key]["value"],field["unit"],self.tr2("Muuttunut","Changed") if changed else self.tr2("Sama","Same"),key)
+                for col,value in enumerate(values):
+                    item = QTableWidgetItem(str(value))
+                    if changed:
+                        font = item.font()
+                        font.setBold(True)
+                        item.setFont(font)
+                    self.diff.setItem(row,col,item)
+            raw = self.report["raw_payload_differences"]
+            self.raw_diff.setRowCount(len(raw))
+            for row,(pid,entry) in enumerate(sorted(raw.items(),key=lambda pair:int(pair[0]))):
+                offsets = entry["changed_data_offsets"]
+                category = self.tr2("Mahdollinen aikaleima","Timestamp candidate") if entry["category"] == "timestamp_candidate" else self.tr2("Tuntematon / tarkistettava","Unknown / review required")
+                for col,value in enumerate((pid,entry["before_status"],entry["after_status"],"—" if offsets is None else ", ".join(map(str,offsets)),category)):
+                    self.raw_diff.setItem(row,col,QTableWidgetItem(str(value)))
+            self.comparison_status.setText(self.tr2("Toinen: ","Second: ")+self.second_path+" · "+self.tr2("Muuttuneet asetukset: ","Changed settings: ")+str(len(changes))+"/"+str(len(self.fields))+" · "+self.tr2("Raakalohkojen erot: ","Raw block differences: ")+str(len(raw))+"\n"+self.tr2("Tunnettujen asetusten yhtäläisyys ei takaa koko konfiguraation yhtäläisyyttä.","Known settings equality does not prove complete configuration equality."))
+        self.filter()
+        self.help_state()
+
     def translate(self,lang):
         self.lang = lang
         self.open_button.setText(self.tr2("Avaa varmuuskopio","Open backup"))
@@ -70,6 +144,10 @@ class OfflinePage(QWidget):
         self.help.setText(self.tr2("Käsikirja","Manual"))
         self.tabs.setTabText(0,self.tr2("Tunnetut asetukset","Known settings"))
         self.tabs.setTabText(1,self.tr2("Raakadata","Raw data"))
+        self.tabs.setTabText(2,self.tr2("Asetuserot","Settings comparison"))
+        self.tabs.setTabText(3,self.tr2("Raakadataerot","Raw differences"))
+        self.compare_button.setText(self.tr2("Vertaa varmuuskopioon","Compare backup"))
+        self.only_changes.setText(self.tr2("Näytä vain muuttuneet asetukset","Show changed settings only"))
         self.populate()
 
     def populate(self):
@@ -97,20 +175,25 @@ class OfflinePage(QWidget):
                 self.raw.setItem(row,col,QTableWidgetItem(str(value)))
         self.status.setText(self.tr2("Ei avattua varmuuskopiota","No backup loaded") if not self.snapshot else
             self.tr2("Varmennettu offline-kaappaus","Verified offline capture")+" · EH-203 / 2.15 · "+str(self.snapshot.get("created_at",""))+" · "+self.path)
-        self.filter()
-        self.help_state()
+        self.populate_comparison()
 
     def filter(self,*_):
         query = self.search.text().casefold()
-        for table in (self.table,self.raw):
+        for table in (self.table,self.raw,self.diff,self.raw_diff):
             for row in range(table.rowCount()):
-                table.setRowHidden(row,not any(query in table.item(row,col).text().casefold() for col in range(table.columnCount()) if table.item(row,col)))
+                hidden = not any(query in table.item(row,col).text().casefold() for col in range(table.columnCount()) if table.item(row,col))
+                if table is self.diff and self.only_changes.isChecked() and self.report is not None:
+                    hidden = hidden or table.item(row,5).text() not in self.report['known_field_changes']
+                table.setRowHidden(row,hidden)
+        self.help_state()
 
     def selected_page(self):
-        row = self.table.currentRow()
-        if self.tabs.currentIndex()!=0 or row<0 or self.table.isRowHidden(row):
+        index = self.tabs.currentIndex()
+        table = self.diff if index == 2 else self.table
+        row = table.currentRow()
+        if index not in (0,2) or row<0 or table.isRowHidden(row):
             return None
-        item = self.table.item(row,5)
+        item = table.item(row,5)
         return PARAMETERS[item.text()]["manual_page"].get(self.lang) if item else None
 
     def help_state(self,*_):
