@@ -62,6 +62,25 @@ def schedule_equal(a,b,pid):
         and a[pid+1][28:]==b[pid+1][28:]
         and schedule_key(a[pid],a[pid+1],pid)==schedule_key(b[pid],b[pid+1],pid))
 
+# Signed parallel shifts are mirrored by firmware 2.15 after a settings write.
+SHIFT_MIRRORS = {12: (27, 65), 14: (23, 66)}
+
+
+def apply_shift_mirror(pid, before, expected):
+    """Predict only the physically observed mirror byte; preserve every other byte."""
+    if pid not in SHIFT_MIRRORS:
+        return
+    offset, mirror = SHIFT_MIRRORS[pid]
+    old = before[pid][offset]
+    new = expected[pid][offset]
+    if old == new:
+        return
+    if before[mirror][9] != old:
+        raise ValueError(f'ID {pid}: Initial parallel shift mirror mismatch')
+    b = expected[mirror]
+    expected[mirror] = b[:9] + bytes([new]) + b[10:]
+
+
 def propose(source, pid, before):
     target = block(source, pid)
     old = before[pid]
@@ -185,5 +204,10 @@ def propose(source, pid, before):
                 mirror[16]=desired_delay
                 expected[14]=bytes(mirror)
         expected[pid] = bytes(modified)
+        if pid in SHIFT_MIRRORS:
+            offset, mirror = SHIFT_MIRRORS[pid]
+            if block(source, mirror)[9] != target[offset]:
+                raise ValueError(f'ID {pid}: Source parallel shift mirror mismatch')
+            apply_shift_mirror(pid, before, expected)
     return expected
 
