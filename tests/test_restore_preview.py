@@ -13,6 +13,7 @@ class PreviewTests(unittest.TestCase):
         original = copy.deepcopy(self.snap)
         report = preview(self.snap,self.snap)
         self.assertEqual(report["steps"],[])
+        self.assertEqual(report["status"],"no_changes")
         self.assertEqual(len(report["fields"]),82)
         self.assertEqual(self.snap,original)
 
@@ -23,6 +24,14 @@ class PreviewTests(unittest.TestCase):
             self.assertEqual(report["steps"],[])
             self.assertEqual(len(report["excluded_ids"]),256)
             planner.assert_not_called()
+
+    def test_blocked_plan_preserves_fields(self):
+        with patch("ouman_eh203.restore_preview.block",side_effect=[b"a",b"b"]), patch("ouman_eh203.restore_preview.plan",side_effect=ValueError("Five-point mode required")):
+            report = preview(self.snap,self.snap)
+        self.assertEqual(report["status"],"blocked")
+        self.assertEqual(report["steps"],[])
+        self.assertEqual(len(report["fields"]),82)
+        self.assertIn("Five-point",report["reason"])
 
     def test_incomplete(self):
         bad = copy.deepcopy(self.snap)
