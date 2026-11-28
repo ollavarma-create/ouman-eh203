@@ -16,6 +16,7 @@ class OfflinePage(QWidget):
         self.lang = "en"
         self.help_callback = help_callback
         self.restore_callback = None
+        self.editable_callback = None
         layout = QVBoxLayout(self)
         bar = QHBoxLayout()
         self.open_button = QPushButton()
@@ -174,6 +175,7 @@ class OfflinePage(QWidget):
                 item = QTableWidgetItem(str(value))
                 item.setToolTip(key+" | "+str(meta.get("documentation_status","")))
                 self.table.setItem(row,col,item)
+        self.mark_editable()
         records = self.snapshot["records"] if self.snapshot else {}
         self.raw.setColumnCount(4)
         self.raw.setHorizontalHeaderLabels(["ID",self.tr2("Tila","Status"),self.tr2("Data (hex)","Data (hex)"),"RX (hex)"])
@@ -185,6 +187,17 @@ class OfflinePage(QWidget):
         self.status.setText(self.tr2("Ei avattua varmuuskopiota","No backup loaded") if not self.snapshot else
             self.tr2("Varmennettu offline-kaappaus","Verified offline capture")+" · EH-203 / 2.15 · "+str(self.snapshot.get("created_at",""))+" · "+self.path)
         self.populate_comparison()
+
+    def mark_editable(self):
+        keys = self.editable_callback() if self.editable_callback else ()
+        for row in range(self.table.rowCount()):
+            key = self.table.item(row,5)
+            label = self.table.item(row,1)
+            if key is None or label is None:
+                continue
+            name = PARAMETERS[key.text()]['label'].get(self.lang) or key.text()
+            label.setText(('✎ ' if key.text() in keys else '') + name)
+            label.setToolTip(self.tr2('Varmuuskopion arvo; kaksoisnapsauta muokataksesi simulaattorin arvoa.','Backup value; double-click to edit the simulator value.') if key.text() in keys else key.text())
 
     def filter(self,*_):
         query = self.search.text().casefold()
