@@ -7,7 +7,7 @@ import time
 from .backup import acquire, verify_file, load, atomic_json, utc
 from .metadata import PARAMETERS
 from .registry import FIELDS, QUICK_IDS
-from .validation import BOUNDS, block
+from .validation import BOUNDS, BENCH_FIELDS, block
 from .restore import IDS, authorize, block_identity
 from .protocol import request, write_frame, decode
 from .transport import exchange, open_serial
@@ -123,7 +123,13 @@ def execute_bench(port, snapshot, approved, safety_path, journal_path, *,
 # The draft path keeps the same isolated-bench authorization as single edits.
 # L1 minimum is an additional candidate already mapped by the restore validator;
 # its physical acceptance remains pending.
-DRAFT_KEYS = ('l1_room_setpoint', 'l1_supply_min', 'l1_supply_max', 'dhw_setpoint')
+DRAFT_KEYS = (
+    'l1_room_setpoint', 'l1_room_gain', 'l1_supply_min', 'l1_supply_max',
+    'l1_night_reduction', 'l1_parallel_shift', 'l1_autumn_drying',
+    'l2_supply_min', 'l2_supply_max', 'l2_night_reduction',
+    'l2_parallel_shift', 'l2_autumn_drying',
+    'dhw_setpoint',
+)
 DRAFT_MAP = {f[0]: f[1:] for f in FIELDS if f[0] in DRAFT_KEYS}
 
 
@@ -148,6 +154,8 @@ def draft_preview(snapshot, values):
         if key not in values:
             continue
         pid, offset, width, signed, factor, _ = DRAFT_MAP[key]
+        if key not in BENCH_FIELDS[pid]:
+            raise ValueError('Field not permitted by restore validator: ' + key)
         factor = Decimal(factor)
         value = Decimal(str(values[key]))
         if not value.is_finite():
@@ -163,11 +171,12 @@ def draft_preview(snapshot, values):
         data = target[pid]
         target[pid] = data[:offset]+int(raw).to_bytes(width,'big',signed=signed)+data[offset+width:]
         changes.append((key, old, value))
-    if target[12] != state[12] and target[12][3] > target[12][4]:
-        raise ValueError('Supply minimum exceeds maximum')
+    for pid, circuit in ((12, 'L1'), (14, 'L2')):
+        if target[pid] != state[pid] and target[pid][3] > target[pid][4]:
+            raise ValueError(circuit + ': Supply minimum exceeds maximum')
     current = dict(state)
     steps = []
-    for pid in (12, 13, 16):
+    for pid in (12, 13, 16, 14):
         if current[pid] != target[pid]:
             expected = dict(current)
             expected[pid] = target[pid]
