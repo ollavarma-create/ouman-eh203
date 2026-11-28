@@ -26,6 +26,15 @@ class BenchWire(SimulatedSerial):
             return False
         self.blocks[pid] = data
         self.persistent[pid] = data
+        # Model only the exact observed L1 mirror and candidate L2 mirror.
+        if pid in (12, 14):
+            offset, mirror = {12: (27,65), 14: (23,66)}[pid]
+            if old[offset] != data[offset]:
+                b = bytearray(self.blocks[mirror])
+                b[9] = data[offset]
+                if self.write_fault == 'extra_mirror_byte':
+                    b[10] ^= 1
+                self.blocks[mirror] = self.persistent[mirror] = bytes(b)
         if self.write_fault == 'readback':
             self.blocks[pid] = old
         return True
@@ -300,13 +309,17 @@ class BenchParameterTests(unittest.TestCase):
             for offset, raw in offsets.items():
                 expected[offset] = raw
             self.assertEqual(after[pid], bytes(expected))
-        self.assertEqual({i for i in before if before[i] != after[i]}, {12, 14})
+        self.assertEqual({i for i in before if before[i] != after[i]}, {12, 14, 65, 66})
+        for pid, raw in ((65, 254), (66, 253)):
+            self.assertEqual(after[pid], before[pid][:9]+bytes([raw])+before[pid][10:])
         self.allowed_writes = 2
         result = self.apply_draft(p)
         self.assertTrue(verify_file(result))
         self.assertEqual([tx[4] for tx in self.sim.writes if tx[1] == 0x82], [12, 14])
         self.assertEqual(self.sim.blocks[12], after[12])
         self.assertEqual(self.sim.blocks[14], after[14])
+        self.assertEqual(self.sim.blocks[65], after[65])
+        self.assertEqual(self.sim.blocks[66], after[66])
         self.assertEqual(load(self.journal)['status'], 'complete')
 
     def test_expanded_heating_limits_and_resolution(self):
@@ -329,3 +342,34 @@ class BenchParameterTests(unittest.TestCase):
         self.assertEqual([s[0] for s in p.steps], [12, 13, 16, 14])
         self.assertEqual(dict(p.after)[14][3:5], bytes([65,80]))
         self.assertFalse(self.sim.writes)
+
+
+    def test_shift_mirror_is_in_next_step_and_final_state(self):
+        p = draft_preview(self.snapshot, {'l1_parallel_shift': -5, 'l2_parallel_shift': -4,
+                                         'l1_room_setpoint': 23})
+        self.assertEqual([s[0] for s in p.steps], [12,13,14])
+        self.assertEqual(dict(p.steps[0][2])[65][9], 0xfb)
+        self.assertEqual(dict(p.steps[1][1])[65][9], 0xfb)
+        self.assertEqual(dict(p.after)[66][9], 0xfc)
+        self.allowed_writes = 3
+        self.apply_draft(p)
+        self.assertEqual(self.sim.blocks[65][9], 0xfb)
+        self.assertEqual(self.sim.blocks[66][9], 0xfc)
+
+    def test_unexpected_mirror_byte_still_stops_transaction(self):
+        p = draft_preview(self.snapshot, {'l1_parallel_shift': -5, 'dhw_setpoint': 59})
+        self.sim.write_fault = 'extra_mirror_byte'
+        self.allowed_writes = 1
+        with self.assertRaises(ValueError):
+            self.apply_draft(p)
+        entries = load(self.journal)['entries']
+        self.assertEqual([e['status'] for e in entries],
+                         ['write_outcome_unknown', 'not_started'])
+        self.assertEqual(self.sim.blocks[16], dict(p.before)[16])
+
+    def test_initial_mirror_mismatch_blocks_shift(self):
+        b = bytearray(self.sim.blocks[65])
+        b[9] = 1
+        self.sim.blocks[65] = bytes(b)
+        with self.assertRaises(ValueError):
+            draft_preview(self.capture(), {'l1_parallel_shift': -5})
