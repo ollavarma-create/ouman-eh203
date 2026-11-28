@@ -270,3 +270,18 @@ Bench firmware 2.15. Relay temperature-control hysteresis changed from 1 to 10 Â
 - Structural revalidation of four JSONL sweeps and 14 single probes: 4310 TX/RX frames, zero STX/length/SUM8 failures. Post-command-sweep scan compared to reboot scan: only IDs 2,3,25,36,38,46 payloads changed; no observed persistent setting change in that comparison, not proof of absence of side effects.
 - Open hypothesis: event flags or queue may be consumed by traffic; initial 81 controls could influence subsequent probes. Original MODBUS-200/EH-485 accessory may use a different transaction sequence or active protocol translation between controller-side serial interface and external RS-485 bus. Not verified; RS-485 electrical signaling alone does not establish Modbus framing on the controller side. Future work: passive capture on verified electrical interfaces of original accessory, compare both sides, no injection on production bus.
 - Production ESPHome/HA and backup acquisition use canonical 81 only. No reliable alarm-state sensor yet. Unknown opcodes and aliases remain bench-only; no new write fields approved. Next implementation: raw backup and portable known-settings representation, followed by guarded restore using existing write-tested allowlist, preserving unknown bytes and excluding identity/live state. Unknown alarm commands and hysteresis mapping are not blockers.
+
+
+### B3.3 monitoring evidence (firmware 2.15 bench)
+
+IDs below are decimal. Signed big-endian temperature / 100; existing missing-sensor sentinel handling applies.
+
+| ID | Interpretation | Evidence |
+|---|---|---|
+| 23 | L1 return | LCD comparison: 24.2 vs 24 C; provisional |
+| 24 | DHW supply (T7) | T7 resistor change, 52.3 to 25.1 C; LCD 25 C |
+| 25 | DHW circulation/anticipation (T8) | Remained near 52.5 C during T7 change; LCD 53 C; no independent T8 perturbation |
+| 26 | L2 supply | LCD comparison: 41.5 vs 42 C; provisional |
+| 33 | Input 9, default L2 return | LCD comparison: 21.4 vs 21 C; provisional; input may be relabelled |
+
+T7 replacement resistor retained on the isolated bench to distinguish DHW channels. IDs 49/50 remained zero during the manual-control test; do not expose as verified percentages. No new write operations authorized.
