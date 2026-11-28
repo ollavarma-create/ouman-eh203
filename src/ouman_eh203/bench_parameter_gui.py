@@ -26,7 +26,7 @@ class BenchWorker(QThread):
         try:
             if self.approved is None:
                 with open_serial(self.port) as ser:
-                    result = acquire(ser, self.path, 0.05, progress=self.progress.emit)
+                    result = acquire(ser, self.path, 0.05, quick=True, progress=self.progress.emit)
                 verify_file(result)
                 self.outcome.emit(result, str(self.path))
             else:
