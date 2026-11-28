@@ -1,13 +1,50 @@
 from PySide6.QtWidgets import (QDialog,QVBoxLayout,QPushButton,QLabel,QFileDialog,
     QTableWidget,QTableWidgetItem,QAbstractItemView,QMessageBox)
-from .backup import load
+from .backup import load, acquire, verify_file
+from .restore import plan, execute_simulated, block_identity
+from .transport import open_serial
+from PySide6.QtCore import QThread, Signal, QStandardPaths
+from pathlib import Path
+from uuid import uuid4
+from threading import Event
+
+class RestoreWorker(QThread):
+    outcome = Signal(object, str)
+    progress = Signal(int, int)
+    def __init__(self, port, sim, path, source=None, target=None, steps=None, parent=None):
+        super().__init__(parent)
+        self.port, self.sim, self.path = port, sim, path
+        self.source, self.target, self.steps = source, target, steps
+        self.cancel = Event()
+    def run(self):
+        try:
+            if self.steps is not None:
+                execute_simulated(self.sim, self.source, self.steps, [], target_identity=block_identity(self.target), allow_device_mismatch=True, journal_path=self.path)
+                self.outcome.emit(True, str(self.path))
+                return
+            ser = self.sim if self.sim is not None else open_serial(self.port)
+            try:
+                result = acquire(ser, self.path, 0 if self.sim is not None else 0.05, progress=self.progress.emit, cancelled=self.cancel.is_set)
+                verify_file(result, structural_only=True)
+            finally:
+                if self.sim is None:
+                    ser.close()
+            self.outcome.emit(result, str(self.path))
+        except Exception as exc:
+            self.outcome.emit(None, str(exc))
 from .restore_preview import preview
 from .metadata import PARAMETERS
 
 class RestoreDialog(QDialog):
-    def __init__(self, source, lang, parent=None):
+    def __init__(self, source, lang, parent=None, *, port='', sim=None):
         super().__init__(parent)
         self.source = source
+        self.port, self.sim = port, sim
+        self.worker = None
+        self.target = None
+        self.approved_steps = None
+        self.directory = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)) / 'restore-safety'
+        self.directory.mkdir(parents=True, exist_ok=True)
         self.source_path = ''
         self.status = QLabel()
         self.lang = lang
@@ -20,7 +57,7 @@ class RestoreDialog(QDialog):
         self.source_label = QLabel(self.tr2('Ei valittua lähdettä','No source selected'))
         self.source_label.setWordWrap(True)
         layout.addWidget(self.source_label)
-        self.choose = QPushButton(self.tr2("Valitse kohdelaitteen varmuuskopio","Choose target backup"))
+        self.choose = QPushButton(self.tr2("Lue kohdelaitteen nykyiset asetukset","Read current target settings"))
         self.choose.clicked.connect(self.select)
         self.choose.setEnabled(source is not None)
         layout.addWidget(self.choose)
@@ -36,6 +73,10 @@ class RestoreDialog(QDialog):
             ["Parametri","Kohde nyt","Palautettava","Yksikkö","Tila"],
             ["Parameter","Target now","Desired","Unit","Status"]))
         layout.addWidget(self.table)
+        self.apply_button = QPushButton(self.tr2('Palauta simulaattoriin','Restore to simulator'))
+        self.apply_button.setEnabled(False)
+        self.apply_button.clicked.connect(self.apply_restore)
+        layout.addWidget(self.apply_button)
         close = QPushButton(self.tr2("Sulje","Close"))
         close.clicked.connect(self.reject)
         layout.addWidget(close)
@@ -51,6 +92,9 @@ class RestoreDialog(QDialog):
     def open_source(self,path):
         from .backup import verify_file
         self.source = None
+        self.target = None
+        self.approved_steps = None
+        self.apply_button.setEnabled(False)
         self.source_path = ""
         self.choose.setEnabled(False)
         self.table.setRowCount(0)
@@ -66,18 +110,74 @@ class RestoreDialog(QDialog):
         self.source,self.source_path = source,str(path)
         self.source_label.setText(self.tr2("Lähde: ","Source: ")+self.source_path)
         self.choose.setEnabled(True)
-        self.status.setText(self.tr2("Valitse kohdelaitteen nykytilan varmuuskopio.","Choose a backup of the target controller's current state."))
+        self.status.setText(self.tr2("Lue kohdelaitteen nykyiset asetukset.","Read current target settings."))
         return True
 
     def select(self):
-        path,_ = QFileDialog.getOpenFileName(self,self.choose.text(),"","JSON (*.json)")
-        if path:
-            self.open_target(path)
+        if self.worker is not None or self.source is None:
+            return
+        self.apply_button.setEnabled(False)
+        self.approved_steps = None
+        self.table.setRowCount(0)
+        path = self.directory / (uuid4().hex + "-before.json")
+        self.start_worker(RestoreWorker(self.port,self.sim,path,parent=self), self.capture_done)
+
+    def start_worker(self, worker, callback):
+        self.worker = worker
+        self.source_button.setEnabled(False)
+        self.choose.setEnabled(False)
+        self.apply_button.setEnabled(False)
+        worker.outcome.connect(callback)
+        worker.progress.connect(self.show_progress)
+        worker.finished.connect(self.worker_done)
+        worker.start()
+
+    def show_progress(self, count, total):
+        self.status.setText(f"{count}/{total}")
+
+    def worker_done(self):
+        self.worker.deleteLater()
+        self.worker = None
+        self.source_button.setEnabled(True)
+        self.choose.setEnabled(self.source is not None)
+        self.apply_button.setEnabled(self.sim is not None and bool(self.approved_steps))
+
+    def capture_done(self, result, detail):
+        if result is None:
+            self.status.setText(self.tr2("Luku epäonnistui: ","Read failed: ")+detail)
+            return
+        self.target = result
+        if self.open_target(detail) and self.sim is not None:
+            report = preview(self.source,result)
+            if report["status"] == "preview_only" and report["steps"]:
+                self.approved_steps = plan(self.source,result,allow_device_mismatch=True)
+
+    def apply_restore(self):
+        if self.worker is not None or self.sim is None or not self.approved_steps:
+            return
+        if QMessageBox.question(self,self.windowTitle(),self.tr2("Palautetaanko asetukset simulaattoriin?","Restore settings to simulator?"),QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:
+            return
+        steps,self.approved_steps = self.approved_steps,None
+        self.start_worker(RestoreWorker(self.port,self.sim,self.directory/(uuid4().hex+"-journal.json"),self.source,self.target,steps,self),self.restore_done)
+
+    def restore_done(self, result, detail):
+        self.status.setText((self.tr2("Palautus varmennettu takaisinluvulla: ","Restore verified by readback: ") if result else self.tr2("Palautus keskeytyi; tarkista nykytila: ","Restore interrupted; inspect current state: "))+detail)
+        self.table.setRowCount(0)
+
+    def reject(self):
+        if self.worker is None:
+            super().reject()
+
+    def closeEvent(self,event):
+        if self.worker is not None:
+            event.ignore()
+        else:
+            super().closeEvent(event)
 
     def open_target(self,path):
         self.table.setRowCount(0)
         self.status.setToolTip('')
-        self.target_label.setText(self.tr2('Kohde: ','Target: ')+str(path))
+        self.target_label.setText(self.tr2('Turvavarmuuskopio: ','Safety backup: ')+str(path))
         if self.source is None:
             return False
         try:
