@@ -188,9 +188,10 @@ class BenchParameterTests(unittest.TestCase):
             opened.assert_not_called()
 
 
-    def apply_draft(self, approved, settle=lambda: None):
+    def apply_draft(self, approved, settle=lambda: None, phase=None):
         with patch('ouman_eh203.backup.time.sleep'):
-            return _apply_draft(self.sim, approved, self.safety, self.journal, settle=settle)
+            return _apply_draft(self.sim, approved, self.safety, self.journal,
+                                settle=settle, phase=phase)
 
     def test_draft_groups_same_block_and_verifies_final_capture(self):
         p = draft_preview(self.snapshot, {'l1_supply_min': 20, 'l1_supply_max': 65,
@@ -265,3 +266,18 @@ class BenchParameterTests(unittest.TestCase):
                 execute_draft('/dev/test', self.snapshot, replace(p, steps=()),
                               self.safety, self.journal, confirmation='BENCH')
             opened.assert_not_called()
+
+
+    def test_draft_reports_phases_in_write_order(self):
+        p = draft_preview(self.snapshot, {'l1_supply_max': 65, 'dhw_setpoint': '58.9'})
+        events = []
+        self.allowed_writes = 2
+        self.apply_draft(p, phase=lambda name, pid: events.append((name, pid)))
+        self.assertEqual(events, [
+            ('check', 0), ('backup', 0), ('check', 0),
+            ('check_step', 12), ('write', 12), ('settle', 12),
+            ('readback', 12), ('verified', 12),
+            ('check_step', 16), ('write', 16), ('settle', 16),
+            ('readback', 16), ('verified', 16),
+            ('final_check', 0), ('final_capture', 0),
+        ])
