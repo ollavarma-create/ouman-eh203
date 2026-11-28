@@ -177,7 +177,9 @@ def draft_preview(snapshot, values):
                  tuple(state.items()), tuple(target.items()), tuple(changes), tuple(steps))
 
 
-def _apply_draft(ser, approved, safety_path, journal_path, *, settle, progress=None):
+def _apply_draft(ser, approved, safety_path, journal_path, *, settle, progress=None, phase=None):
+    notify = phase or (lambda *_: None)
+    notify('check', 0)
     if Path(safety_path).resolve() == Path(journal_path).resolve():
         raise ValueError('Distinct safety and journal paths required')
     if Path(safety_path).exists() or Path(journal_path).exists():
@@ -186,7 +188,9 @@ def _apply_draft(ser, approved, safety_path, journal_path, *, settle, progress=N
         raise ValueError('Stale preview')
     if not approved.steps:
         return None
+    notify('backup', 0)
     acquire(ser, safety_path, 0.25, quick=True, progress=progress or (lambda *_: None))
+    notify('check', 0)
     safety = load(safety_path)
     values = {key: new for key, _, new in approved.changes}
     if draft_preview(safety, values) != approved or _read(ser, approved) != dict(approved.before):
@@ -205,20 +209,33 @@ def _apply_draft(ser, approved, safety_path, journal_path, *, settle, progress=N
     save()
     try:
         for entry, (pid, before, after) in zip(entries, approved.steps):
+            notify('check_step', pid)
             if _read(ser, approved) != dict(before):
                 raise ValueError('Stale plan before next write')
             entry['status'] = 'write_outcome_unknown'
-            observed = write_and_observe(entry, send=lambda tx: exchange(ser, tx),
-                acknowledge=lambda rx: decode(rx,pid,0), settle=settle,
-                read=lambda: _read(ser, approved), save=save)
+            def send(tx):
+                notify('write', pid)
+                return exchange(ser, tx)
+            def wait():
+                notify('settle', pid)
+                settle()
+            def readback():
+                notify('readback', pid)
+                return _read(ser, approved)
+            observed = write_and_observe(entry, send=send,
+                acknowledge=lambda rx: decode(rx,pid,0), settle=wait,
+                read=readback, save=save)
             if observed != dict(after):
                 raise ValueError('Unexpected readback; inspect journal, do not retry')
             entry['status'] = 'verified'
             save()
+            notify('verified', pid)
+        notify('final_check', 0)
         if _read(ser, approved) != dict(approved.after):
             raise ValueError('Final state mismatch')
         # Fresh observed capture for display; not a synthetic or modified backup.
         post_path = Path(str(journal_path) + '.after.json')
+        notify('final_capture', 0)
         result = acquire(ser, post_path, 0.05, quick=True, progress=progress or (lambda *_: None))
         _, final_state = _state(result)
         if block_identity(result) != approved.identity or final_state != dict(approved.after):
@@ -234,11 +251,11 @@ def _apply_draft(ser, approved, safety_path, journal_path, *, settle, progress=N
 
 
 def execute_draft(port, snapshot, approved, safety_path, journal_path, *,
-                  confirmation, progress=None):
+                  confirmation, progress=None, phase=None):
     if confirmation != 'BENCH':
         raise ValueError('Isolated controller confirmation BENCH required')
     if draft_preview(snapshot, {k: n for k, _, n in approved.changes}) != approved:
         raise ValueError('Modified preview')
     with open_serial(port) as ser:
         return _apply_draft(ser, approved, safety_path, journal_path,
-                            settle=lambda: time.sleep(5), progress=progress)
+                            settle=lambda: time.sleep(5), progress=progress, phase=phase)
