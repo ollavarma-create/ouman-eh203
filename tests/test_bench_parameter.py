@@ -7,6 +7,7 @@ from unittest.mock import patch
 from ouman_eh203.backup import load, acquire, verify_file
 from ouman_eh203.bench_parameter import preview, execute_bench, _apply
 from ouman_eh203.simulator import SimulatedSerial
+from ouman_eh203.registry import QUICK_IDS
 
 
 class BenchWire(SimulatedSerial):
@@ -82,6 +83,31 @@ class BenchParameterTests(unittest.TestCase):
         self.assertEqual(journal['status'], 'verified')
         self.assertFalse(journal['persistence_verified'])
         self.assertEqual(journal['observed'], journal['expected'])
+
+    def test_quick_preview_and_safety_scan_only_accepted_ids(self):
+        current = acquire(self.sim, self.directory/'quick.json', 0, quick=True,
+                          progress=lambda *_: None)
+        self.assertEqual([tx[4] for tx in self.sim.writes], list(QUICK_IDS))
+        approved = preview(current, 'dhw_setpoint', '61.1')
+        self.assertEqual(approved, preview(self.snapshot, 'dhw_setpoint', '61.1'))
+        self.sim.writes.clear()
+        self.allowed_writes = 1
+        self.assertTrue(self.apply(approved))
+        safety = load(self.safety)
+        self.assertTrue(verify_file(safety))
+        self.assertEqual(safety['profile'], 'eh203-2.15-bench-v1')
+        self.assertEqual(set(map(int, safety['records'])), set(QUICK_IDS))
+        self.assertTrue(all(tx[4] in QUICK_IDS for tx in self.sim.writes))
+        self.assertEqual(load(self.journal)['safety_profile'], safety['profile'])
+
+    def test_missing_accepted_id_blocks_write(self):
+        approved = preview(self.snapshot, 'dhw_setpoint', '61.1')
+        # A known readable ID outside the restore block set disappears.
+        del self.sim.blocks[101]
+        with self.assertRaises(ValueError):
+            self.apply(approved)
+        self.assertFalse(self.journal.exists())
+        self.assertEqual(load(self.safety)['records']['101']['status'], 'rejected')
 
     def test_bounds_resolution_and_allowlist(self):
         for key, value in (('dhw_setpoint', '49.9'), ('dhw_setpoint', '65.1'),
