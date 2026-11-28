@@ -10,7 +10,7 @@ from .dashboard import Dashboard
 from .curve_gui import CurvePage
 from PySide6.QtCore import QSettings, QThread, Signal
 from PySide6.QtWidgets import (QApplication, QWidget, QMainWindow, QVBoxLayout,
-    QHBoxLayout, QLabel, QPushButton, QComboBox, QLineEdit, QTabWidget, QFileDialog, QProgressDialog)
+    QHBoxLayout, QLabel, QPushButton, QComboBox, QLineEdit, QTabWidget, QFileDialog, QProgressDialog, QMessageBox)
 from .protocol import request, classify
 from .transport import open_serial, exchange
 from .simulator import SimulatedSerial
@@ -106,6 +106,8 @@ class Window(QMainWindow):
         self.snapshot = None
         self.snapshot_sim = None
         self.snapshot_path = ""
+        self.saved_blocks = None
+        self.scenario_path = ""
         self.snapshot_button = QPushButton()
         self.snapshot_button.clicked.connect(self.choose_snapshot)
         self.port = QLineEdit(self.settings.value("port", "/dev/ttyUSB0"))
@@ -138,6 +140,9 @@ class Window(QMainWindow):
         self.snapshot_label = QLabel()
         self.snapshot_label.setWordWrap(True)
         layout.addWidget(self.snapshot_label)
+        self.save_scenario_button = QPushButton()
+        self.save_scenario_button.clicked.connect(self.save_scenario)
+        layout.addWidget(self.save_scenario_button)
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
         self.monitor = Dashboard(settings=self.settings)
@@ -155,8 +160,18 @@ class Window(QMainWindow):
             self.backup_status = QLabel()
             self.backup_status.setWordWrap(True)
             box.addWidget(self.backup_status)
+            self.edit_button = QPushButton()
+            self.edit_button.clicked.connect(self.open_parameter_editor)
+            box.addWidget(self.edit_button)
             self.offline = OfflinePage(self.monitor.open_help)
             self.offline.restore_callback = self.open_restore
+            self.use_backup_button = QPushButton()
+            self.use_backup_button.clicked.connect(self.use_open_backup)
+            box.addWidget(self.use_backup_button)
+            self.offline.open_button.clicked.connect(self.backup_enabled)
+            self.offline.table.cellDoubleClicked.connect(self.edit_table_parameter)
+            self.offline.editable_callback = self.editable_keys
+            self.offline.simulation_open = self.open_configuration_path
             box.addWidget(self.offline, 1)
             self.tabs.addTab(page, "")
         self.curves = CurvePage(self.monitor.open_help)
@@ -176,22 +191,79 @@ class Window(QMainWindow):
         if path:
             self.load_snapshot(path)
 
+    def dirty(self):
+        return self.snapshot_sim is not None and self.snapshot_sim.blocks != self.saved_blocks
+
+    def confirm_discard(self):
+        if not self.dirty():
+            return True
+        fi = self.language.currentText() == 'fi'
+        answer = QMessageBox.question(self, self.windowTitle(),
+            'Simulaatiossa on tallentamattomia muutoksia. Hylätäänkö ne?' if fi else
+            'The simulation has unsaved changes. Discard them?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        return answer == QMessageBox.StandardButton.Yes
+
+    def open_configuration_path(self, path):
+        if self.mode.currentIndex() == 2:
+            return self.load_snapshot(path)
+        return self.offline.open_path(path)
+
+    def use_open_backup(self):
+        if self.offline.snapshot is not None and self.use_backup_button.isEnabled():
+            self.load_snapshot(self.offline.path)
+
     def load_snapshot(self, path):
         if self.session is not None or self.worker is not None or self.backup_worker is not None:
             return False
-        self.snapshot = None
-        self.snapshot_path = ""
+        from .scenario import decode
         try:
-            snapshot = load(path)
-            self.snapshot_sim = SimulatedSerial.from_snapshot(snapshot)
+            snapshot, sim, scenario = decode(load(path))
         except (OSError, ValueError, TypeError, KeyError, AttributeError, IndexError) as exc:
-            self.reset_status()
             self.status.setText(("Virhe: " if self.language.currentText()=="fi" else "Error: ")+str(exc))
             return False
-        self.snapshot, self.snapshot_path = snapshot, str(path)
+        if not self.confirm_discard():
+            return False
+        self.snapshot, self.snapshot_sim = snapshot, sim
+        self.snapshot_path = str(path)
+        self.scenario_path = str(path) if scenario else ""
+        self.saved_blocks = dict(sim.blocks)
         self.mode.setCurrentIndex(2)
         self.reset_status()
         return True
+
+    def save_scenario(self):
+        if not self.save_scenario_button.isEnabled():
+            return
+        from .scenario import encode
+        from .backup import atomic_json
+        fi = self.language.currentText() == 'fi'
+        path, _ = QFileDialog.getSaveFileName(self, self.save_scenario_button.text(),
+            'eh203-scenario.json', 'JSON (*.json)',
+            options=QFileDialog.Option.DontConfirmOverwrite)
+        if not path:
+            return
+        try:
+            if Path(path).exists():
+                raise FileExistsError('Choose a new filename' if not fi else 'Valitse uusi tiedostonimi')
+            atomic_json(path, encode(self.snapshot, self.snapshot_sim))
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self,self.windowTitle(),str(exc))
+            return
+        self.saved_blocks = dict(self.snapshot_sim.blocks)
+        self.scenario_path = str(path)
+        self.reset_status()
+
+    def editable_keys(self):
+        from .parameter_edit import KEYS
+        return KEYS if self.edit_button.isEnabled() and self.offline.snapshot == self.snapshot else ()
+
+    def edit_table_parameter(self, row, column):
+        from .parameter_edit import KEYS
+        item = self.offline.table.item(row,5)
+        if item and item.text() in self.editable_keys():
+            self.open_parameter_editor(item.text())
 
     def snapshot_factory(self):
         sim = self.snapshot_sim
@@ -209,13 +281,34 @@ class Window(QMainWindow):
         dialog = RestoreDialog(None,self.language.currentText(),self,port=self.port.text().strip(),sim=self.snapshot_sim if mode==2 else None)
         dialog.exec()
         dialog.deleteLater()
+        self.reset_status()
+
+    def open_parameter_editor(self, key=None):
+        if not self.edit_button.isEnabled():
+            return
+        from .parameter_gui import ParameterDialog
+        dialog = ParameterDialog(self.snapshot_sim,self.language.currentText(),self.monitor.open_help,self)
+        if isinstance(key,str):
+            dialog.choice.setCurrentIndex(dialog.choice.findData(key))
+        dialog.exec()
+        dialog.deleteLater()
+        self.reset_status()
 
     def backup_enabled(self):
         idle = self.session is None and self.worker is None and self.backup_worker is None
         selected = self.mode.currentIndex() == 2
         ready = not selected or self.snapshot is not None
         self.backup_button.setEnabled(self.mode.currentIndex() == 1 and idle)
+        self.edit_button.setEnabled(selected and idle and self.snapshot is not None)
         self.offline.restore_button.setEnabled(idle)
+        self.use_backup_button.setVisible(not selected)
+        self.use_backup_button.setEnabled(idle and self.offline.snapshot is not None and self.offline.simulation is None)
+        self.offline.open_button.setEnabled(idle)
+        self.save_scenario_button.setVisible(selected)
+        self.save_scenario_button.setEnabled(selected and idle and self.snapshot is not None)
+        fi = self.language.currentText() == 'fi'
+        self.offline.mark_editable()
+        self.edit_button.setToolTip(('Valitse simulaattorin varmuuskopio ja katkaise yhteys.' if fi else 'Load a simulator backup and disconnect.') if not self.edit_button.isEnabled() else '')
         self.snapshot_button.setEnabled(selected and idle)
         self.connect_button.setEnabled(idle and ready)
         self.live_button.setEnabled(self.session is not None or (idle and ready))
@@ -375,11 +468,14 @@ class Window(QMainWindow):
         self.mode.setItemText(0, s[4])
         self.mode.setItemText(1, s[5])
         self.mode.setItemText(2, "Simulaattori varmuuskopiosta" if lang=="fi" else "Backup simulator")
-        self.snapshot_button.setText("Valitse simulaattorin varmuuskopio" if lang=="fi" else "Choose simulator backup")
+        self.snapshot_button.setText("Avaa varmuuskopio tai simulaatio" if lang=="fi" else "Open backup or simulation")
         self.monitor.translate(lang)
         self.curves.translate(lang)
         self.tabs.setTabText(2, 'Lämmityskäyrät' if lang == 'fi' else 'Heating curves')
         self.config.setText('Katkaise käytönvalvontayhteys ennen varmuuskopiointia. Raakakaappaus ei takaa kaikkien asetusten palautettavuutta.' if lang == 'fi' else 'Disconnect monitoring before backup. Raw capture does not guarantee restoration of every setting.')
+        self.edit_button.setText('Muokkaa simulaattorin asetuksia' if lang=='fi' else 'Edit simulator settings')
+        self.use_backup_button.setText('Käytä avattua varmuuskopiota simulaattorissa' if lang=='fi' else 'Use opened backup in simulator')
+        self.save_scenario_button.setText('Tallenna simulaatio nimellä' if lang=='fi' else 'Save simulation as')
         self.offline.translate(lang)
         self.translate_backup_status()
         self.backup_button.setText('Ota varmuuskopio' if lang == 'fi' else 'Create backup')
@@ -392,7 +488,26 @@ class Window(QMainWindow):
         fi = self.language.currentText() == 'fi'
         self.snapshot_button.setVisible(selected)
         self.snapshot_label.setVisible(selected)
-        self.snapshot_label.setText((('Tallennetut arvot, ei reaaliaikainen mittaus: ' if fi else 'Captured values, not live measurements: ') + self.snapshot_path) if self.snapshot is not None else ('Valitse varmennettu varmuuskopio' if fi else 'Choose a verified backup'))
+        self.setWindowTitle("Ouman EH-203 Manager" + (" *" if self.dirty() else ""))
+        if self.snapshot is None:
+            label = 'Valitse varmuuskopio tai simulaatio' if fi else 'Choose backup or simulation'
+        elif self.dirty():
+            label = 'Tallentamattomia muutoksia' if fi else 'Unsaved changes'
+        elif self.scenario_path:
+            label = 'Simulaatio tallennettu' if fi else 'Simulation saved'
+        else:
+            label = 'Simulaatio ladattu' if fi else 'Simulation loaded'
+        self.snapshot_label.setText(label + (' · ' + (self.scenario_path or self.snapshot_path) if self.snapshot else ''))
+        self.snapshot_label.setStyleSheet('font-weight: bold;' if self.dirty() else '')
+        self.offline.open_button.setText(('Avaa varmuuskopio tai simulaatio' if fi else 'Open backup or simulation') if selected else ('Avaa varmuuskopio' if fi else 'Open backup'))
+        if selected and self.snapshot is not None:
+            self.offline.show_simulation(self.snapshot, self.snapshot_sim, self.scenario_path or self.snapshot_path)
+        elif self.offline.simulation is not None:
+            self.offline.simulation = None
+            self.offline.snapshot = None
+            self.offline.fields = {}
+            self.offline.path = ''
+            self.offline.populate()
         self.backup_enabled()
         self.port.setEnabled(self.mode.currentIndex() == 1 and self.worker is None)
         self.status.setToolTip('')
@@ -451,8 +566,11 @@ class Window(QMainWindow):
             return
         if self.worker is not None:
             event.ignore()
-        else:
+        elif self.confirm_discard():
             super().closeEvent(event)
+        else:
+            self.closing = False
+            event.ignore()
 
 def main():
     app = QApplication(sys.argv)
