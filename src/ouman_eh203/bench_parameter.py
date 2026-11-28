@@ -11,6 +11,7 @@ from .validation import BOUNDS, block
 from .restore import IDS, authorize, block_identity
 from .protocol import request, write_frame, decode
 from .transport import exchange, open_serial
+from .transaction import write_and_observe
 
 KEYS = ('l1_room_setpoint', 'l1_supply_max', 'dhw_setpoint')
 MAP = {f[0]: f[1:] for f in FIELDS if f[0] in KEYS}
@@ -98,15 +99,9 @@ def _apply(ser, approved, safety_path, journal_path, *, settle, progress=None):
                    before={str(i): b.hex() for i, b in before.items()},
                    expected={str(i): b.hex() for i, b in after.items()},
                    tx=tx.hex(), status='write_outcome_unknown', persistence_verified=False)
-    atomic_json(journal_path, journal)
-    rx = exchange(ser, tx)
-    journal['rx'] = rx.hex()
-    atomic_json(journal_path, journal)
-    decode(rx, approved.pid, 0)
-    settle()
-    observed = _read(ser, approved)
-    journal['observed'] = {str(i): b.hex() for i, b in observed.items()}
-    atomic_json(journal_path, journal)
+    observed = write_and_observe(journal, send=lambda tx: exchange(ser, tx),
+        acknowledge=lambda rx: decode(rx, approved.pid, 0), settle=settle,
+        read=lambda: _read(ser, approved), save=lambda: atomic_json(journal_path, journal))
     if observed != after:
         raise ValueError('Unexpected readback; inspect journal, do not retry')
     journal.update(status='verified', verification='readback_only')
@@ -123,3 +118,127 @@ def execute_bench(port, snapshot, approved, safety_path, journal_path, *,
     with open_serial(port) as ser:
         return _apply(ser, approved, safety_path, journal_path,
                       settle=lambda: time.sleep(5), progress=progress)
+
+
+# The draft path keeps the same isolated-bench authorization as single edits.
+# L1 minimum is an additional candidate already mapped by the restore validator;
+# its physical acceptance remains pending.
+DRAFT_KEYS = ('l1_room_setpoint', 'l1_supply_min', 'l1_supply_max', 'dhw_setpoint')
+DRAFT_MAP = {f[0]: f[1:] for f in FIELDS if f[0] in DRAFT_KEYS}
+
+
+@dataclass(frozen=True)
+class Draft:
+    identity: bytes
+    identity_length: int
+    before: tuple
+    after: tuple
+    changes: tuple  # (key, old, new), Decimal values
+    steps: tuple    # (pid, before state, expected state)
+
+
+def draft_preview(snapshot, values):
+    """Validate the combined final state and group changes by wire block."""
+    identity, state = _state(snapshot)
+    if set(values) - set(DRAFT_KEYS):
+        raise ValueError('Parameter not authorized for physical bench editing')
+    target = dict(state)
+    changes = []
+    for key in DRAFT_KEYS:
+        if key not in values:
+            continue
+        pid, offset, width, signed, factor, _ = DRAFT_MAP[key]
+        factor = Decimal(factor)
+        value = Decimal(str(values[key]))
+        if not value.is_finite():
+            raise ValueError('Non-finite value: ' + key)
+        old = Decimal(int.from_bytes(state[pid][offset:offset+width], 'big', signed=signed))*factor
+        if old == value:
+            continue
+        lo, hi = PARAMETERS[key]['manual_range']
+        raw = value / factor
+        bench_lo, bench_hi = BOUNDS[key]
+        if not lo <= value <= hi or not bench_lo <= raw <= bench_hi or raw != raw.to_integral_value():
+            raise ValueError('Outside documented/bench range or resolution: ' + key)
+        data = target[pid]
+        target[pid] = data[:offset]+int(raw).to_bytes(width,'big',signed=signed)+data[offset+width:]
+        changes.append((key, old, value))
+    if target[12] != state[12] and target[12][3] > target[12][4]:
+        raise ValueError('Supply minimum exceeds maximum')
+    current = dict(state)
+    steps = []
+    for pid in (12, 13, 16):
+        if current[pid] != target[pid]:
+            expected = dict(current)
+            expected[pid] = target[pid]
+            steps.append((pid, tuple(current.items()), tuple(expected.items())))
+            current = expected
+    return Draft(identity, len(bytes.fromhex(snapshot['records']['1']['data'])),
+                 tuple(state.items()), tuple(target.items()), tuple(changes), tuple(steps))
+
+
+def _apply_draft(ser, approved, safety_path, journal_path, *, settle, progress=None):
+    if Path(safety_path).resolve() == Path(journal_path).resolve():
+        raise ValueError('Distinct safety and journal paths required')
+    if Path(safety_path).exists() or Path(journal_path).exists():
+        raise FileExistsError('Evidence paths must be new')
+    if _read(ser, approved) != dict(approved.before):
+        raise ValueError('Stale preview')
+    if not approved.steps:
+        return None
+    acquire(ser, safety_path, 0.25, quick=True, progress=progress or (lambda *_: None))
+    safety = load(safety_path)
+    values = {key: new for key, _, new in approved.changes}
+    if draft_preview(safety, values) != approved or _read(ser, approved) != dict(approved.before):
+        raise ValueError('Target changed during safety backup')
+    entries = [dict(id=pid, status='not_started', tx=write_frame(pid, dict(after)[pid]).hex(),
+                    before={str(i): b.hex() for i,b in before},
+                    expected={str(i): b.hex() for i,b in after})
+               for pid,before,after in approved.steps]
+    journal = dict(schema='ouman.eh203.bench-draft.v1', created_at=utc(),
+                   target_identity=approved.identity.hex(), safety=str(safety_path),
+                   safety_sha256=safety['records_sha256'], safety_profile=safety['profile'],
+                   changes=[dict(key=k, old=str(o), new=str(n)) for k,o,n in approved.changes],
+                   entries=entries, status='running', persistence_verified=False)
+    def save():
+        atomic_json(journal_path, journal)
+    save()
+    try:
+        for entry, (pid, before, after) in zip(entries, approved.steps):
+            if _read(ser, approved) != dict(before):
+                raise ValueError('Stale plan before next write')
+            entry['status'] = 'write_outcome_unknown'
+            observed = write_and_observe(entry, send=lambda tx: exchange(ser, tx),
+                acknowledge=lambda rx: decode(rx,pid,0), settle=settle,
+                read=lambda: _read(ser, approved), save=save)
+            if observed != dict(after):
+                raise ValueError('Unexpected readback; inspect journal, do not retry')
+            entry['status'] = 'verified'
+            save()
+        if _read(ser, approved) != dict(approved.after):
+            raise ValueError('Final state mismatch')
+        # Fresh observed capture for display; not a synthetic or modified backup.
+        post_path = Path(str(journal_path) + '.after.json')
+        result = acquire(ser, post_path, 0.05, quick=True, progress=progress or (lambda *_: None))
+        _, final_state = _state(result)
+        if block_identity(result) != approved.identity or final_state != dict(approved.after):
+            raise ValueError('Final capture mismatch')
+        journal.update(status='complete', verification='readback_only',
+                       after_capture=str(post_path), after_sha256=result['records_sha256'])
+        save()
+        return result
+    except Exception as exc:
+        journal.update(status='interrupted', error=str(exc))
+        save()
+        raise
+
+
+def execute_draft(port, snapshot, approved, safety_path, journal_path, *,
+                  confirmation, progress=None):
+    if confirmation != 'BENCH':
+        raise ValueError('Isolated controller confirmation BENCH required')
+    if draft_preview(snapshot, {k: n for k, _, n in approved.changes}) != approved:
+        raise ValueError('Modified preview')
+    with open_serial(port) as ser:
+        return _apply_draft(ser, approved, safety_path, journal_path,
+                            settle=lambda: time.sleep(5), progress=progress)
