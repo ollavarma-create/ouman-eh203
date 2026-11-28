@@ -18,7 +18,8 @@ class BenchWire(SimulatedSerial):
         self.write_fault = None
 
     def apply(self, pid, data):
-        allowed = {12: {3, 4}, 13: {1, 2}, 16: {1, 2}}
+        allowed = {12: {3, 4, 5, 7, 14, 27}, 13: {1, 2},
+                   14: {3, 4, 5, 9, 23}, 16: {1, 2}}
         old = self.blocks[pid]
         if len(data) != len(old) or not set(i for i, (a, b) in enumerate(zip(old, data))
                                            if a != b) <= allowed.get(pid, set()):
@@ -281,3 +282,50 @@ class BenchParameterTests(unittest.TestCase):
             ('readback', 16), ('verified', 16),
             ('final_check', 0), ('final_capture', 0),
         ])
+
+
+    def test_expanded_heating_draft_groups_and_preserves_bytes(self):
+        values = {'l1_room_gain': '3.5', 'l1_night_reduction': 4,
+                  'l1_parallel_shift': -2, 'l1_autumn_drying': 3,
+                  'l2_supply_min': 20, 'l2_supply_max': 65,
+                  'l2_night_reduction': 5, 'l2_parallel_shift': -3,
+                  'l2_autumn_drying': 4}
+        p = draft_preview(self.snapshot, values)
+        self.assertEqual(len(p.changes), 9)
+        self.assertEqual([step[0] for step in p.steps], [12, 14])
+        before, after = dict(p.before), dict(p.after)
+        for pid, offsets in ((12, {5: 4, 7: 35, 14: 3, 27: 254}),
+                             (14, {3: 20, 4: 65, 5: 5, 9: 4, 23: 253})):
+            expected = bytearray(before[pid])
+            for offset, raw in offsets.items():
+                expected[offset] = raw
+            self.assertEqual(after[pid], bytes(expected))
+        self.assertEqual({i for i in before if before[i] != after[i]}, {12, 14})
+        self.allowed_writes = 2
+        result = self.apply_draft(p)
+        self.assertTrue(verify_file(result))
+        self.assertEqual([tx[4] for tx in self.sim.writes if tx[1] == 0x82], [12, 14])
+        self.assertEqual(self.sim.blocks[12], after[12])
+        self.assertEqual(self.sim.blocks[14], after[14])
+        self.assertEqual(load(self.journal)['status'], 'complete')
+
+    def test_expanded_heating_limits_and_resolution(self):
+        for values in ({'l1_room_gain': '7.1'}, {'l1_room_gain': '3.55'},
+                       {'l2_supply_min': 4}, {'l2_supply_max': 96},
+                       {'l1_night_reduction': 36}, {'l2_night_reduction': -1},
+                       {'l1_parallel_shift': -16}, {'l2_parallel_shift': 15.5},
+                       {'l1_autumn_drying': 16}, {'l2_autumn_drying': -1},
+                       {'l2_room_setpoint': 21}, {'l1_outdoor_delay': 4}):
+            with self.subTest(values=values), self.assertRaises(ValueError):
+                draft_preview(self.snapshot, values)
+        self.assertFalse(self.sim.writes)
+
+    def test_l2_min_max_dependency_and_cross_circuit_order(self):
+        with self.assertRaises(ValueError):
+            draft_preview(self.snapshot, {'l2_supply_min': 60, 'l2_supply_max': 50})
+        p = draft_preview(self.snapshot, {'l2_supply_min': 65, 'l2_supply_max': 80,
+                                         'l1_room_setpoint': 22, 'dhw_setpoint': 59,
+                                         'l1_parallel_shift': 2})
+        self.assertEqual([s[0] for s in p.steps], [12, 13, 16, 14])
+        self.assertEqual(dict(p.after)[14][3:5], bytes([65,80]))
+        self.assertFalse(self.sim.writes)
