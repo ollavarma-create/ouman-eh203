@@ -11,6 +11,7 @@ FIELDS = (
     (18, 0, "Ulkolämpötila", "Outdoor temperature", 8),
     (20, 1, "Menovesi", "Supply water", 8),
     (21, 1, "Huonelämpötila", "Room temperature", 8),
+    ("l1_room_setpoint", 1, "Huoneasetus", "Room setpoint", 6),
     ("l1_target", 1, "Laskennallinen tavoite", "Calculated target", 10),
     ("l1_valve", 1, "Venttiiliohjaus", "Valve command", 9),
     ("l2_supply", 2, "Menovesi", "Supply water", 8),
@@ -113,7 +114,7 @@ class Dashboard(QWidget):
             value.setText(self.format_value(key, val))
             labels = {"pending": ("Ei toteutettu", "Not implemented"), "waiting": ("Odottaa", "Waiting") if self.connected else ("Ei yhteyttä", "Disconnected"),
                       "stale": ("Vanhentunut", "Stale"), "missing": ("Anturi puuttuu", "Sensor missing"), "live": ("Ajantasainen", "Current")}
-            state.setText(self.tr2(*labels[status]))
+            state.setText(self.tr2("Ei anturia tai tuettua reititystä", "No sensor or supported route") if key == "l2_room" and status == "missing" else self.tr2(*labels[status]))
         stamps = [datetime.fromisoformat(s[1]) for s in self.samples.values()]
         stamp = max(stamps).astimezone().strftime("%H:%M:%S") if stamps else "—"
         self.updated.setText(self.tr2("Viimeisin vastaanotto: ", "Last received: ") + stamp)
@@ -127,12 +128,14 @@ class Dashboard(QWidget):
             modes = {0: ("Automaatti", "Automatic"), 1: ("Jatkuva päivä", "Continuous day"),
                      2: ("Jatkuva yö", "Continuous night"), 3: ("Seis", "Shutdown"),
                      4: ("Mekaaninen käsiajo", "Mechanical manual"), 5: ("Sähköinen käsiajo", "Electrical manual")}
+            if key == "dhw_mode" and val in (6, 7):
+                return self.tr2(*{6: ("Ei korotusta", "No boost"), 7: ("Jatkuva korotus", "Continuous boost")}[val])
             if key == "dhw_mode" and val not in (0, 4, 5):
                 return self.tr2(f"Tuntematon ({val})", f"Unknown ({val})")
             return self.tr2(*modes.get(val, (f"Tuntematon ({val})", f"Unknown ({val})")))
         if key == "dhw_valve":
             return f"{val} %"
-        return f"{val:.2f} °C"
+        return f"{val:.1f} °C"
 
     def open_help(self, page):
         directory = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.GenericDataLocation)) / "ouman-eh203" / "manuals"
