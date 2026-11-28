@@ -196,8 +196,13 @@ class Window(QMainWindow):
         return (lambda: SimulatedSerial.from_snapshot(snapshot)) if self.mode.currentIndex()==2 and snapshot is not None else None
 
     def backup_enabled(self):
-        self.backup_button.setEnabled(self.mode.currentIndex() == 1 and
-            self.session is None and self.worker is None and self.backup_worker is None)
+        idle = self.session is None and self.worker is None and self.backup_worker is None
+        selected = self.mode.currentIndex() == 2
+        ready = not selected or self.snapshot is not None
+        self.backup_button.setEnabled(self.mode.currentIndex() == 1 and idle)
+        self.snapshot_button.setEnabled(selected and idle)
+        self.connect_button.setEnabled(idle and ready)
+        self.live_button.setEnabled(self.session is not None or (idle and ready))
 
     def start_backup(self):
         if not self.backup_button.isEnabled():
@@ -411,13 +416,12 @@ class Window(QMainWindow):
     def finish_probe(self):
         self.worker.deleteLater()
         self.worker = None
-        self.backup_enabled()
-        self.live_button.setEnabled(True)
         self.scan_button.setEnabled(True)
         self.port_choices.setEnabled(True)
         for widget in (self.connect_button, self.mode, self.language):
             widget.setEnabled(True)
         self.port.setEnabled(self.mode.currentIndex() == 1)
+        self.backup_enabled()
 
     def closeEvent(self, event):
         if self.backup_worker is not None:
