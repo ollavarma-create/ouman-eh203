@@ -38,7 +38,7 @@ class ManualTests(unittest.TestCase):
             self.assertEqual(manager.inspect(manager.path("fi")), (pages, digest))
 
     def test_acquisition_worker_lifecycle(self):
-        from PySide6.QtCore import QSettings, QEventLoop, QTimer
+        from PySide6.QtCore import QSettings, QEventLoop, QTimer, QCoreApplication, QEvent
         from ouman_eh203.manual_gui import ManualSettings
         app = QApplication.instance() or QApplication([])
         with tempfile.TemporaryDirectory() as directory:
@@ -54,8 +54,12 @@ class ManualTests(unittest.TestCase):
             worker = dialog.worker
             loop = QEventLoop()
             worker.finished.connect(loop.quit)
-            QTimer.singleShot(5000, loop.quit)
+            timer = QTimer()
+            timer.setSingleShot(True)
+            timer.timeout.connect(loop.quit)
+            timer.start(5000)
             loop.exec()
+            timer.stop()
             if dialog.worker is not None:
                 worker.wait()
                 app.processEvents()
@@ -64,3 +68,8 @@ class ManualTests(unittest.TestCase):
             self.assertEqual(dialog.manager.path("en").read_bytes(), source.read_bytes())
             self.assertEqual(dialog.status.text(), "Saved.")
             dialog.close()
+            dialog.deleteLater()
+            del worker
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            app.processEvents()
+            del dialog, timer, loop
