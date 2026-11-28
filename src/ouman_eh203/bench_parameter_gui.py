@@ -4,8 +4,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from PySide6.QtCore import QThread, Signal, QStandardPaths
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QComboBox,
-    QLineEdit, QPushButton, QInputDialog, QTableWidget, QTableWidgetItem,
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel,
+    QPushButton, QInputDialog, QTableWidget, QTableWidgetItem,
     QAbstractItemView, QHeaderView, QMessageBox, QHBoxLayout)
 from .backup import acquire, verify_file, known_fields
 from .bench_parameter import DRAFT_KEYS, DRAFT_MAP, draft_preview, execute_draft
@@ -53,7 +53,7 @@ class BenchParameterDialog(QDialog):
         self.directory = Path(QStandardPaths.writableLocation(
             QStandardPaths.StandardLocation.AppDataLocation)) / 'bench-edits'
         self.setWindowTitle(self.t('Testilaitteen asetukset', 'Bench controller settings'))
-        self.resize(880, 480)
+        self.resize(940, 620)
         layout = QVBoxLayout(self)
         warning = QLabel(self.t('Kokeellinen: vain eristetty EH-203 2.15, kuormat irrotettu. Kynä muuttaa vain paikallista luonnosta.',
                                 'Experimental: isolated EH-203 2.15 only, loads disconnected. Pencil edits only the local draft.'))
@@ -62,14 +62,16 @@ class BenchParameterDialog(QDialog):
         self.read_button = QPushButton(self.t('Lue testilaite', 'Read bench controller'))
         self.read_button.clicked.connect(self.capture)
         layout.addWidget(self.read_button)
-        self.table = QTableWidget(len(DRAFT_KEYS), 5)
+        self.table = QTableWidget(len(DRAFT_KEYS), 6)
         self.table.setHorizontalHeaderLabels(self.t(
-            ['Parametri', 'Nykyinen', 'Luonnos', 'Testialue', 'Muokkaa'],
-            ['Parameter', 'Current', 'Draft', 'Bench range', 'Edit']))
+            ['Piiri', 'Parametri', 'Nykyinen', 'Luonnos', 'Testialue', 'Muokkaa'],
+            ['Circuit', 'Parameter', 'Current', 'Draft', 'Bench range', 'Edit']))
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        for column in (2, 3, 4, 5):
+            self.table.horizontalHeader().setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.table)
         self.validation = QLabel()
         self.validation.setWordWrap(True)
@@ -90,22 +92,30 @@ class BenchParameterDialog(QDialog):
         layout.addWidget(self.close_button)
         self.pencils = {}
         for row, key in enumerate(DRAFT_KEYS):
-            self.table.setItem(row, 0, QTableWidgetItem(PARAMETERS[key]['label'][lang]))
+            self.table.setItem(row, 0, QTableWidgetItem(self.circuit(key)))
+            self.table.setItem(row, 1, QTableWidgetItem(PARAMETERS[key]['label'][lang]))
             factor, unit = DRAFT_MAP[key][-2:]
             lo, hi = PARAMETERS[key]['manual_range']
             blo, bhi = [Decimal(x)*Decimal(factor) for x in BOUNDS[key]]
             bounds = f'{max(lo,blo)}…{min(hi,bhi)} {unit}'
-            self.table.setItem(row, 3, QTableWidgetItem(bounds))
+            self.table.setItem(row, 4, QTableWidgetItem(bounds.rstrip()))
             pencil = QPushButton('✎')
-            pencil.setAccessibleName(self.t('Muokkaa ', 'Edit ') + PARAMETERS[key]['label'][lang])
+            pencil.setAccessibleName(self.t('Muokkaa ', 'Edit ') + self.label(key))
             pencil.setToolTip(pencil.accessibleName())
             pencil.clicked.connect(lambda checked=False, k=key: self.edit(k))
-            self.table.setCellWidget(row, 4, pencil)
+            self.table.setCellWidget(row, 5, pencil)
             self.pencils[key] = pencil
         self.refresh()
 
     def t(self, fi, en):
         return fi if self.lang == 'fi' else en
+
+    def circuit(self, key):
+        return {'l1': self.t('L1', 'H1'), 'l2': self.t('L2', 'H2'),
+                'dhw': self.t('LV', 'DHW')}[key.split('_', 1)[0]]
+
+    def label(self, key):
+        return self.circuit(key) + ' · ' + PARAMETERS[key]['label'][self.lang]
 
     def dirty(self):
         return self.values != self.original
@@ -131,9 +141,9 @@ class BenchParameterDialog(QDialog):
             unit = DRAFT_MAP[key][-1]
             old = self.original.get(key)
             new = self.values.get(key)
-            for column, value in ((1, old), (2, new)):
-                item = QTableWidgetItem('—' if value is None else f'{value} {unit}')
-                if column == 2 and new != old:
+            for column, value in ((2, old), (3, new)):
+                item = QTableWidgetItem('—' if value is None else f'{value} {unit}'.rstrip())
+                if column == 3 and new != old:
                     font = item.font()
                     font.setBold(True)
                     item.setFont(font)
@@ -157,7 +167,7 @@ class BenchParameterDialog(QDialog):
         factor, unit = DRAFT_MAP[key][-2:]
         low, high = meta['manual_range']
         value, ok = QInputDialog.getText(self, self.windowTitle(),
-            f"{meta['label'][self.lang]} ({unit})\n" +
+            self.label(key) + (f' ({unit})' if unit else '') + '\n' +
             self.t('Ohjekirjan alue', 'Manual range') + f': {low}…{high}\n' +
             self.t('Askel', 'Step') + f': {factor}',
             text=str(self.values[key]))
@@ -180,8 +190,8 @@ class BenchParameterDialog(QDialog):
 
     def set_snapshot(self, snapshot):
         self.snapshot = snapshot
-        self.original = {} if snapshot is None else {
-            key: Decimal(known_fields(snapshot)['fields'][key]['value']) for key in DRAFT_KEYS}
+        fields = {} if snapshot is None else known_fields(snapshot)['fields']
+        self.original = {key: Decimal(fields[key]['value']) for key in DRAFT_KEYS} if snapshot is not None else {}
         self.values = dict(self.original)
         self.refresh()
 
@@ -229,7 +239,7 @@ class BenchParameterDialog(QDialog):
         if self.worker is not None or self.approved is None or not self.approved.steps:
             return
         approved = self.approved
-        lines = [f"{PARAMETERS[k]['label'][self.lang]}: {old} → {new} {DRAFT_MAP[k][-1]}"
+        lines = [f'{self.label(k)}: {old} → {new} {DRAFT_MAP[k][-1]}'.rstrip()
                  for k, old, new in approved.changes]
         confirmation, ok = QInputDialog.getText(self, self.windowTitle(),
             '\n'.join(lines) + '\n' +
