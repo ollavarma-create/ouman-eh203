@@ -6,19 +6,20 @@ from .manuals import ManualManager
 from .monitoring import ACTIVE_KEYS
 from .manual_gui import ManualViewer
 
-# Only verified measurement channels are enabled. Other rows are placeholders.
+# Measurement evidence is documented in PARAMETER_MAP.md.
 FIELDS = (
     (18, 0, "Ulkolämpötila", "Outdoor temperature", 8),
     (20, 1, "Menovesi", "Supply water", 8),
     (21, 1, "Huonelämpötila", "Room temperature", 8),
     ("l1_room_setpoint", 1, "Huoneasetus", "Room setpoint", 6),
     ("l1_target", 1, "Laskennallinen tavoite", "Calculated target", 10),
-    ("l1_valve", 1, "Venttiiliohjaus", "Valve command", 9),
-    ("l2_supply", 2, "Menovesi", "Supply water", 8),
+    (23, 1, "Paluuvesi", "Return water", 8),
+    (26, 2, "Menovesi", "Supply water", 8),
     ("l2_room", 2, "Huonelämpötila", "Room temperature", 8),
     ("l2_target", 2, "Laskennallinen tavoite", "Calculated target", 10),
-    ("l2_valve", 2, "Venttiiliohjaus", "Valve command", 9),
-    ("dhw_temp", 3, "Lämpötila", "Temperature", 8),
+    (33, 2, "Paluuvesi (mitt. 9)", "Return water (input 9)", 8),
+    (24, 3, "Menovesi", "Supply water", 8),
+    (25, 3, "Kiertovesi/ennakointi", "Circulation/anticipation", 8),
     ("dhw_target", 3, "Asetusarvo", "Setpoint", 7),
     ("dhw_valve", 3, "Venttiiliohjaus", "Valve command", 9),
     ("l1_mode", 1, "Ohjaustapa", "Operating mode", 12),
@@ -88,6 +89,10 @@ class Dashboard(QWidget):
             name, value, state, button = self.rows[key]
             name.setText(self.tr2(fi, en))
             tip = self.tr2(f"Käsikirja, s. {page} (painos varmentamatta)", f"Manual, p. {page} (edition unverified)")
+            if key in (23, 26, 33):
+                tip += self.tr2("\nAlustava tunnistus LCD-vertailulla.", "\nProvisional identification by LCD comparison.")
+            if key == 33:
+                tip += self.tr2("\nMittauksen nimi voi olla muutettu säätimessä.", "\nInput may be relabelled on the controller.")
             name.setToolTip(tip)
             button.setToolTip(tip)
         self.refresh()
